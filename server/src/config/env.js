@@ -18,6 +18,8 @@ const env = {
   visitorRetentionDays: toNumber(process.env.VISITOR_RETENTION_DAYS, 7),
   matchWindowDays: toNumber(process.env.MATCH_WINDOW_DAYS, 3),
   requestTimeoutMs: toNumber(process.env.REQUEST_TIMEOUT_MS, 10000),
+  defaultListLimit: toNumber(process.env.DEFAULT_LIST_LIMIT, 100),
+  maxListLimit: toNumber(process.env.MAX_LIST_LIMIT, 500),
   apiAuthToken: process.env.API_AUTH_TOKEN || '',
   shopifyWebhookSecret: process.env.SHOPIFY_WEBHOOK_SECRET || '',
   tiktokPixelId: process.env.TIKTOK_PIXEL_ID || '',

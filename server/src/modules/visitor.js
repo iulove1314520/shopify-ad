@@ -1,6 +1,7 @@
 const { db } = require('../db/client');
 const { env } = require('../config/env');
 const { getRealIp } = require('../utils/ip');
+const { resolveLimit } = require('../utils/pagination');
 
 function toIsoString(value, fallback) {
   const date = new Date(value);
@@ -70,15 +71,6 @@ function handleVisitor(req, res, next) {
   }
 }
 
-function resolveLimit(value) {
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed) || parsed <= 0) {
-    return 200;
-  }
-
-  return Math.min(parsed, 1000);
-}
-
 function listVisitors(req, res, next) {
   try {
     const rows = db
@@ -110,4 +102,3 @@ module.exports = {
   handleVisitor,
   listVisitors,
 };
-

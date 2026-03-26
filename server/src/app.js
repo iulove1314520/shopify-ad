@@ -2,12 +2,14 @@ const express = require('express');
 
 const apiRouter = require('./routes/api');
 const webhookRouter = require('./routes/webhook');
+const { getHealth } = require('./modules/system');
 const { requestLogger, logError } = require('./utils/logger');
 
 function createApp() {
   const app = express();
 
   app.disable('x-powered-by');
+  app.set('trust proxy', true);
   app.use(requestLogger);
 
   app.use((req, res, next) => {
@@ -26,12 +28,7 @@ function createApp() {
     next();
   });
 
-  app.get('/health', (req, res) => {
-    res.json({
-      ok: true,
-      timestamp: new Date().toISOString(),
-    });
-  });
+  app.get('/health', getHealth);
 
   app.use('/webhook', webhookRouter);
   app.use(express.json({ limit: '1mb' }));
@@ -54,4 +51,3 @@ function createApp() {
 }
 
 module.exports = { createApp };
-

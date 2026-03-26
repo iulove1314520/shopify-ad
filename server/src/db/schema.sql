@@ -21,11 +21,13 @@ CREATE TABLE IF NOT EXISTS orders (
   financial_status TEXT NOT NULL DEFAULT '',
   raw_payload TEXT NOT NULL,
   status TEXT NOT NULL DEFAULT 'received',
+  status_reason TEXT NOT NULL DEFAULT '',
   processed_at TEXT,
   created_record_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE INDEX IF NOT EXISTS idx_orders_created_at ON orders(created_at);
+CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status);
 
 CREATE TABLE IF NOT EXISTS webhook_events (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -38,6 +40,8 @@ CREATE TABLE IF NOT EXISTS webhook_events (
   received_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   processed_at TEXT
 );
+
+CREATE INDEX IF NOT EXISTS idx_webhook_events_status ON webhook_events(status);
 
 CREATE TABLE IF NOT EXISTS matches (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -68,4 +72,4 @@ CREATE TABLE IF NOT EXISTS callbacks (
 );
 
 CREATE INDEX IF NOT EXISTS idx_callbacks_order_id ON callbacks(order_id);
-
+CREATE INDEX IF NOT EXISTS idx_callbacks_status ON callbacks(status);

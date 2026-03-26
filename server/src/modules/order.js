@@ -3,6 +3,7 @@ const crypto = require('node:crypto');
 const { env } = require('../config/env');
 const { db } = require('../db/client');
 const { matchOrder } = require('./match');
+const { resolveLimit } = require('../utils/pagination');
 
 function verifyShopifySignature(rawBody, signature) {
   if (!env.shopifyWebhookSecret || !signature) {
@@ -58,6 +59,16 @@ function saveWebhookEvent({
         processed_at = excluded.processed_at
     `
   ).run(webhookId, topic, shopifyOrderId, status, errorMessage, processedAt);
+}
+
+function updateOrderStatus(orderId, status, statusReason = '') {
+  db.prepare(
+    `
+      UPDATE orders
+      SET status = ?, status_reason = ?, processed_at = ?
+      WHERE id = ?
+    `
+  ).run(status, statusReason, new Date().toISOString(), orderId);
 }
 
 function upsertOrder(order, rawBody) {
@@ -142,9 +153,11 @@ async function processOrderWebhook({ order, rawBody, headers }) {
   const orderRecord = upsertOrder(order, rawBody);
 
   if (String(order.financial_status || '').toLowerCase() === 'pending') {
-    db.prepare(
-      'UPDATE orders SET status = ?, processed_at = ? WHERE id = ?'
-    ).run('ignored_pending', new Date().toISOString(), orderRecord.id);
+    updateOrderStatus(
+      orderRecord.id,
+      'ignored_pending',
+      'financial_status_pending'
+    );
 
     saveWebhookEvent({
       webhookId,
@@ -157,9 +170,11 @@ async function processOrderWebhook({ order, rawBody, headers }) {
   }
 
   if (hasProcessedCallback(shopifyOrderId)) {
-    db.prepare(
-      'UPDATE orders SET status = ?, processed_at = ? WHERE id = ?'
-    ).run('duplicate_ignored', new Date().toISOString(), orderRecord.id);
+    updateOrderStatus(
+      orderRecord.id,
+      'duplicate_ignored',
+      'callback_already_recorded'
+    );
 
     saveWebhookEvent({
       webhookId,
@@ -183,9 +198,7 @@ async function processOrderWebhook({ order, rawBody, headers }) {
 
     return result;
   } catch (error) {
-    db.prepare(
-      'UPDATE orders SET status = ?, processed_at = ? WHERE id = ?'
-    ).run('processing_failed', new Date().toISOString(), orderRecord.id);
+    updateOrderStatus(orderRecord.id, 'processing_failed', error.message);
 
     saveWebhookEvent({
       webhookId,
@@ -199,8 +212,64 @@ async function processOrderWebhook({ order, rawBody, headers }) {
   }
 }
 
+function listOrders(req, res, next) {
+  try {
+    const rows = db
+      .prepare(
+        `
+          SELECT
+            shopify_order_id AS order_id,
+            created_at,
+            total_price,
+            currency,
+            zip,
+            financial_status,
+            status,
+            status_reason,
+            processed_at,
+            created_record_at
+          FROM orders
+          ORDER BY created_record_at DESC
+          LIMIT ?
+        `
+      )
+      .all(resolveLimit(req.query.limit));
+
+    res.json(rows);
+  } catch (error) {
+    next(error);
+  }
+}
+
+function listWebhookEvents(req, res, next) {
+  try {
+    const rows = db
+      .prepare(
+        `
+          SELECT
+            webhook_id,
+            topic,
+            shopify_order_id,
+            status,
+            error_message,
+            received_at,
+            processed_at
+          FROM webhook_events
+          ORDER BY received_at DESC
+          LIMIT ?
+        `
+      )
+      .all(resolveLimit(req.query.limit));
+
+    res.json(rows);
+  } catch (error) {
+    next(error);
+  }
+}
+
 module.exports = {
   processOrderWebhook,
   verifyShopifySignature,
+  listOrders,
+  listWebhookEvents,
 };
-

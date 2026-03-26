@@ -4,6 +4,7 @@ const { env } = require('../config/env');
 const { db } = require('../db/client');
 const { sendToTikTok } = require('../services/tiktok');
 const { sendToFacebook } = require('../services/facebook');
+const { resolveLimit } = require('../utils/pagination');
 
 function getConfidence(timeDiffMs, ip) {
   let confidence = '低';
@@ -22,11 +23,47 @@ function getConfidence(timeDiffMs, ip) {
   return confidence;
 }
 
+function buildUnmatchedReason(totalVisitorsInWindow, eligibleVisitorCount) {
+  if (totalVisitorsInWindow === 0) {
+    return 'no_visitors_in_window';
+  }
+
+  if (eligibleVisitorCount === 0) {
+    return 'visitors_missing_click_id';
+  }
+
+  return 'no_valid_match_candidate';
+}
+
+function buildMatchedStatusReason(platform, confidence, callbackStatus, error) {
+  const parts = [
+    `matched_platform=${platform.toLowerCase()}`,
+    `confidence=${confidence}`,
+    `callback=${callbackStatus}`,
+  ];
+
+  if (error) {
+    parts.push(`error=${error}`);
+  }
+
+  return parts.join(';');
+}
+
 function findBestVisitor(orderCreatedAt) {
   const orderTime = new Date(orderCreatedAt).getTime();
   const windowStart = new Date(
     orderTime - env.matchWindowDays * 24 * 60 * 60 * 1000
   ).toISOString();
+
+  const totalVisitorsInWindow = db
+    .prepare(
+      `
+        SELECT COUNT(*) AS count
+        FROM visitors
+        WHERE timestamp >= ? AND timestamp <= ?
+      `
+    )
+    .get(windowStart, orderCreatedAt).count;
 
   const candidates = db
     .prepare(
@@ -48,6 +85,7 @@ function findBestVisitor(orderCreatedAt) {
     )
     .all(windowStart, orderCreatedAt);
 
+  const eligibleVisitorCount = candidates.length;
   let bestVisitor = null;
   let bestTimeDiffMs = Number.POSITIVE_INFINITY;
 
@@ -62,12 +100,20 @@ function findBestVisitor(orderCreatedAt) {
   }
 
   if (!bestVisitor) {
-    return null;
+    return {
+      matched: false,
+      reason: buildUnmatchedReason(totalVisitorsInWindow, eligibleVisitorCount),
+      totalVisitorsInWindow,
+      eligibleVisitorCount,
+    };
   }
 
   return {
+    matched: true,
     visitor: bestVisitor,
     timeDiffMs: bestTimeDiffMs,
+    totalVisitorsInWindow,
+    eligibleVisitorCount,
   };
 }
 
@@ -98,12 +144,14 @@ function saveCallback(order, callbackResult) {
 async function matchOrder(order) {
   const bestMatch = findBestVisitor(order.created_at);
 
-  if (!bestMatch) {
-    db.prepare(
-      'UPDATE orders SET status = ?, processed_at = ? WHERE id = ?'
-    ).run('unmatched', new Date().toISOString(), order.id);
+  if (!bestMatch.matched) {
+    const reason = `${bestMatch.reason};total_visitors=${bestMatch.totalVisitorsInWindow};eligible_visitors=${bestMatch.eligibleVisitorCount}`;
 
-    return { matched: false };
+    db.prepare(
+      'UPDATE orders SET status = ?, status_reason = ?, processed_at = ? WHERE id = ?'
+    ).run('unmatched', reason, new Date().toISOString(), order.id);
+
+    return { matched: false, reason };
   }
 
   const platform = bestMatch.visitor.ttclid ? 'TikTok' : 'Facebook';
@@ -148,9 +196,16 @@ async function matchOrder(order) {
     nextStatus = 'matched_no_callback';
   }
 
+  const statusReason = buildMatchedStatusReason(
+    platform,
+    confidence,
+    callbackResult.status,
+    callbackResult.errorMessage
+  );
+
   db.prepare(
-    'UPDATE orders SET status = ?, processed_at = ? WHERE id = ?'
-  ).run(nextStatus, new Date().toISOString(), order.id);
+    'UPDATE orders SET status = ?, status_reason = ?, processed_at = ? WHERE id = ?'
+  ).run(nextStatus, statusReason, new Date().toISOString(), order.id);
 
   return {
     matched: true,
@@ -174,10 +229,10 @@ function listMatches(req, res, next) {
             time_diff_seconds
           FROM matches
           ORDER BY match_time DESC
-          LIMIT 200
+          LIMIT ?
         `
       )
-      .all();
+      .all(resolveLimit(req.query.limit));
 
     res.json(rows);
   } catch (error) {
@@ -199,10 +254,10 @@ function listCallbacks(req, res, next) {
             callback_time
           FROM callbacks
           ORDER BY callback_time DESC
-          LIMIT 200
+          LIMIT ?
         `
       )
-      .all();
+      .all(resolveLimit(req.query.limit));
 
     res.json(rows);
   } catch (error) {
@@ -215,4 +270,3 @@ module.exports = {
   listMatches,
   listCallbacks,
 };
-
