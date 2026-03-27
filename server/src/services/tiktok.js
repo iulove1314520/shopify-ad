@@ -1,26 +1,31 @@
 const axios = require('axios');
 
 const { env } = require('../config/env');
-
-function summarize(value) {
-  if (value === undefined || value === null) {
-    return '';
-  }
-
-  const stringified =
-    typeof value === 'string' ? value : JSON.stringify(value, null, 0);
-
-  return stringified.slice(0, 1000);
-}
+const {
+  maskValue,
+  summarize,
+  createSkippedResult,
+  createSuccessResult,
+  createFailureResult,
+} = require('./callback-utils');
 
 async function sendToTikTok(order, ttclid) {
+  const requestSummary = summarize({
+    orderId: order.shopify_order_id,
+    pixelCode: env.tiktokPixelId,
+    event: 'Purchase',
+    currency: order.currency,
+    value: Number(order.total_price || 0),
+    clickId: maskValue(ttclid),
+  });
+
   if (!env.tiktokPixelId || !env.tiktokAccessToken) {
-    return {
-      platform: 'TikTok',
-      status: 'skipped',
-      responseSummary: 'TikTok credentials are missing',
-      errorMessage: '',
-    };
+    return createSkippedResult(
+      'TikTok',
+      'TikTok credentials are missing',
+      requestSummary,
+      'credentials_missing'
+    );
   }
 
   try {
@@ -49,21 +54,10 @@ async function sendToTikTok(order, ttclid) {
       }
     );
 
-    return {
-      platform: 'TikTok',
-      status: 'success',
-      responseSummary: summarize(response.data),
-      errorMessage: '',
-    };
+    return createSuccessResult('TikTok', response, requestSummary);
   } catch (error) {
-    return {
-      platform: 'TikTok',
-      status: 'failed',
-      responseSummary: summarize(error.response?.data),
-      errorMessage: error.message,
-    };
+    return createFailureResult('TikTok', error, requestSummary);
   }
 }
 
 module.exports = { sendToTikTok };
-

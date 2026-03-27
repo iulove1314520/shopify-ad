@@ -58,13 +58,19 @@ CREATE TABLE IF NOT EXISTS matches (
 );
 
 CREATE INDEX IF NOT EXISTS idx_matches_order_id ON matches(order_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_matches_order_unique ON matches(order_id);
 
 CREATE TABLE IF NOT EXISTS callbacks (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   order_id INTEGER NOT NULL,
   shopify_order_id TEXT NOT NULL,
   platform TEXT NOT NULL,
+  trigger_source TEXT NOT NULL DEFAULT 'webhook',
+  attempt_number INTEGER NOT NULL DEFAULT 1,
   status TEXT NOT NULL,
+  retryable INTEGER NOT NULL DEFAULT 0,
+  http_status INTEGER,
+  request_summary TEXT NOT NULL DEFAULT '',
   response_summary TEXT NOT NULL DEFAULT '',
   error_message TEXT NOT NULL DEFAULT '',
   callback_time TEXT NOT NULL,

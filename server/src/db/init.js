@@ -23,6 +23,12 @@ function initDatabase() {
   const schema = fs.readFileSync(schemaPath, 'utf8');
   db.exec(schema);
   ensureColumn('orders', 'status_reason', "TEXT NOT NULL DEFAULT ''");
+  ensureColumn('callbacks', 'trigger_source', "TEXT NOT NULL DEFAULT 'webhook'");
+  ensureColumn('callbacks', 'attempt_number', 'INTEGER NOT NULL DEFAULT 1');
+  ensureColumn('callbacks', 'retryable', 'INTEGER NOT NULL DEFAULT 0');
+  ensureColumn('callbacks', 'http_status', 'INTEGER');
+  ensureColumn('callbacks', 'request_summary', "TEXT NOT NULL DEFAULT ''");
+  db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_matches_order_unique ON matches(order_id)');
 }
 
 module.exports = { initDatabase };

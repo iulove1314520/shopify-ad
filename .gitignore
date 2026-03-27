@@ -23,8 +23,19 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
+*.log
+logs/
+coverage/
 
 # 编辑器与系统缓存
 .DS_Store
 .vscode/
 .idea/
+.cache/
+tmp/
+temp/
+*.pid
+*.seed
+*.swp
+*.swo
+*~

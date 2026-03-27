@@ -18,6 +18,8 @@ const env = {
   visitorRetentionDays: toNumber(process.env.VISITOR_RETENTION_DAYS, 7),
   matchWindowDays: toNumber(process.env.MATCH_WINDOW_DAYS, 3),
   requestTimeoutMs: toNumber(process.env.REQUEST_TIMEOUT_MS, 10000),
+  callbackMaxAttempts: toNumber(process.env.CALLBACK_MAX_ATTEMPTS, 2),
+  callbackRetryDelayMs: toNumber(process.env.CALLBACK_RETRY_DELAY_MS, 800),
   defaultListLimit: toNumber(process.env.DEFAULT_LIST_LIMIT, 100),
   maxListLimit: toNumber(process.env.MAX_LIST_LIMIT, 500),
   apiAuthToken: process.env.API_AUTH_TOKEN || '',

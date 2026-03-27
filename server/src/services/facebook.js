@@ -1,26 +1,31 @@
 const axios = require('axios');
 
 const { env } = require('../config/env');
-
-function summarize(value) {
-  if (value === undefined || value === null) {
-    return '';
-  }
-
-  const stringified =
-    typeof value === 'string' ? value : JSON.stringify(value, null, 0);
-
-  return stringified.slice(0, 1000);
-}
+const {
+  maskValue,
+  summarize,
+  createSkippedResult,
+  createSuccessResult,
+  createFailureResult,
+} = require('./callback-utils');
 
 async function sendToFacebook(order, fbclid) {
+  const requestSummary = summarize({
+    orderId: order.shopify_order_id,
+    pixelId: env.facebookPixelId,
+    event: 'Purchase',
+    currency: order.currency,
+    value: Number(order.total_price || 0),
+    clickId: maskValue(fbclid),
+  });
+
   if (!env.facebookPixelId || !env.facebookAccessToken) {
-    return {
-      platform: 'Facebook',
-      status: 'skipped',
-      responseSummary: 'Facebook credentials are missing',
-      errorMessage: '',
-    };
+    return createSkippedResult(
+      'Facebook',
+      'Facebook credentials are missing',
+      requestSummary,
+      'credentials_missing'
+    );
   }
 
   try {
@@ -48,21 +53,10 @@ async function sendToFacebook(order, fbclid) {
       }
     );
 
-    return {
-      platform: 'Facebook',
-      status: 'success',
-      responseSummary: summarize(response.data),
-      errorMessage: '',
-    };
+    return createSuccessResult('Facebook', response, requestSummary);
   } catch (error) {
-    return {
-      platform: 'Facebook',
-      status: 'failed',
-      responseSummary: summarize(error.response?.data),
-      errorMessage: error.message,
-    };
+    return createFailureResult('Facebook', error, requestSummary);
   }
 }
 
 module.exports = { sendToFacebook };
-

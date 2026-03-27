@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Shopee 广告回传后台</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@500;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/ui/styles.css" />
+  <script src="/ui/app.js" defer></script>
+</head>
+<body class="aurora-theme">
+  <!-- CSS Background Blur Orbs -->
+  <div class="orb orb-1"></div>
+  <div class="orb orb-2"></div>
+  <div class="orb orb-3"></div>
+
+  <div class="app-container">
+    <!-- Sidebar Navigation -->
+    <aside class="sidebar glass-panel">
+      <div class="sidebar-brand">
+        <div class="logo-glow">
+          <svg viewBox="0 0 24 24" fill="none" class="brand-icon">
+            <path d="M12 2L2 7L12 12L22 7L12 2Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+            <path d="M2 17L12 22L22 17" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+            <path d="M2 12L12 17L22 12" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+          </svg>
+        </div>
+        <h2>回传系统后台</h2>
+      </div>
+
+      <nav class="sidebar-nav">
+        <div class="nav-group-title">数据看板</div>
+        <a href="#overview" class="nav-item active">
+          <span class="icon">📊</span> <span>首页概览</span>
+        </a>
+        <a href="#orders" class="nav-item">
+          <span class="icon">🛍️</span> <span>订单记录</span>
+        </a>
+        <a href="#callbacks" class="nav-item">
+          <span class="icon">📡</span> <span>广告回传</span>
+        </a>
+        <a href="#matches" class="nav-item">
+          <span class="icon">🎯</span> <span>匹配记录</span>
+        </a>
+        
+        <div class="nav-group-title">系统日志</div>
+        <a href="#events" class="nav-item">
+          <span class="icon">⚡</span> <span>Webhook 接收</span>
+        </a>
+        <a href="#visitors" class="nav-item">
+          <span class="icon">🐾</span> <span>访客记录</span>
+        </a>
+      </nav>
+
+      <div class="sidebar-footer">
+        <div class="auth-module">
+          <div class="auth-header">
+            <span class="icon">🔒</span> 接口访问验证
+          </div>
+          <p class="auth-desc">未输入令牌前只能查看系统状态。请输入令牌以查看真实业务数据。</p>
+          <div class="input-glass">
+            <input id="tokenInput" type="password" placeholder="请输入 API_AUTH_TOKEN" spellcheck="false" />
+            <button id="toggleTokenBtn" class="btn-icon">👁️</button>
+          </div>
+          <div class="btn-group-row">
+            <button id="saveTokenBtn" class="btn btn-primary btn-sm">确认授权</button>
+            <button id="clearTokenBtn" class="btn btn-ghost btn-sm">清除</button>
+          </div>
+          <div id="authStatus" class="status-indicator warning">
+            <span class="status-dot warning"></span> 等待输入令牌
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Main Workspace -->
+    <main class="workspace">
+      <!-- Top Header -->
+      <header class="topbar">
+        <div class="header-titles">
+          <h1>广告回传监控面板</h1>
+          <p class="subtitle"> 监控 Shopee 订单、访客点击，以及发给 TikTok 和 Facebook 的广告回调是否成功。</p>
+        </div>
+        
+        <div class="system-health-widget glass-panel">
+          <div class="health-meta">
+            <span id="healthEnvironment" class="env-chip">检测环境...</span>
+            <span class="time-label">最近刷新: <span id="lastUpdated" class="mono">--:--:--</span></span>
+          </div>
+          <div class="health-core">
+            <div id="healthPill" class="health-pill pulse-warning">
+              <span class="status-ring"></span>
+              <span id="healthStatusText">连接中...</span>
+            </div>
+            <button id="refreshBtn" class="btn btn-glow"><span class="icon">🔄</span> 刷新数据</button>
+          </div>
+          <!-- Hidden compatibility elements to not break app.js -->
+          <span id="healthDatabase" style="display:none;"></span>
+          <span id="healthJournal" style="display:none;"></span>
+        </div>
+      </header>
+
+      <div class="scroll-canvas">
+        
+        <!-- Core Metrics (Referred to as metricGrid in JS) -->
+        <div class="section-title" id="overview">
+          <h2>核心业务数据</h2>
+          <p>今天最重要的统计数字，快速判断整体业务是否健康。</p>
+        </div>
+        <section id="metricGrid" class="metrics-grid">
+          <!-- Populated dynamically via app.js -->
+          <div class="metric-card skeleton glass-panel"></div>
+          <div class="metric-card skeleton glass-panel"></div>
+          <div class="metric-card skeleton glass-panel"></div>
+          <div class="metric-card skeleton glass-panel"></div>
+          <div class="metric-card skeleton glass-panel"></div>
+        </section>
+
+        <!-- Insights Summary -->
+        <div class="section-title">
+          <h2>成功与失败概览</h2>
+          <p>快速查看目前有没有大量失败或未处理的订单与回调。</p>
+        </div>
+        <section class="insights-grid">
+          <div class="insight-panel glass-panel">
+            <div class="panel-header">
+              <span class="icon">🛍️</span> <h3>订单处理情况</h3>
+            </div>
+            <div class="status-list" id="orderStatusList"></div>
+          </div>
+          <div class="insight-panel glass-panel">
+            <div class="panel-header">
+              <span class="icon">📡</span> <h3>回调发送情况</h3>
+            </div>
+            <div class="status-list" id="callbackStatusList"></div>
+          </div>
+          <div class="insight-panel glass-panel">
+            <div class="panel-header">
+              <span class="icon">⚡</span> <h3>Webhook 接收情况</h3>
+            </div>
+            <div class="status-list" id="eventStatusList"></div>
+          </div>
+        </section>
+
+        <div class="section-divider"></div>
+
+        <!-- Detailed Tables Area -->
+        <div class="section-title" id="orders">
+          <h2>最近订单列表</h2>
+          <p>查看最近订单的处理结果和失败原因。</p>
+        </div>
+        <section class="table-section glass-panel">
+          <div class="table-wrapper" id="ordersTable"></div>
+        </section>
+
+        <div class="section-title" id="callbacks">
+          <h2>回调结果列表</h2>
+          <p>查看系统发给 TikTok 和 Facebook 的广告回调是否成功。</p>
+        </div>
+        <section class="table-section glass-panel">
+          <div class="table-wrapper" id="callbacksTable"></div>
+        </section>
+
+        <div class="section-title" id="matches">
+          <h2>订单匹配结果</h2>
+          <p>查看订单是否成功匹配到了广告点击记录。</p>
+        </div>
+        <section class="table-section glass-panel">
+          <div class="table-wrapper" id="matchesTable"></div>
+        </section>
+
+        <div class="section-title" id="events">
+          <h2>Webhook 接收记录</h2>
+          <p>查看 Shopify 推过来的事件有没有被系统收到并处理。</p>
+        </div>
+        <section class="table-section glass-panel">
+          <div class="table-wrapper" id="eventsTable"></div>
+        </section>
+
+        <div class="section-title" id="visitors">
+          <h2>广告访客记录</h2>
+          <p>查看广告带来的访客信息（包含 ttclid、fbclid 等点击参数）。</p>
+        </div>
+        <section class="table-section glass-panel">
+          <div class="table-wrapper" id="visitorsTable"></div>
+        </section>
+
+        <!-- Bottom Padding -->
+        <div class="footer-spacer">
+          Shopee CPAS Ad Tracker © 2026. Data strictly monitored.
+        </div>
+      </div>
+    </main>
+  </div>
+</body>
+</html>

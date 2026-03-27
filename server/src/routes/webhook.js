@@ -1,7 +1,7 @@
 const express = require('express');
 
 const { env } = require('../config/env');
-const { logError } = require('../utils/logger');
+const { logError, logWarn } = require('../utils/logger');
 const {
   processOrderWebhook,
   verifyShopifySignature,
@@ -24,6 +24,10 @@ router.post(
     const signature = String(req.get('x-shopify-hmac-sha256') || '').trim();
 
     if (!verifyShopifySignature(rawBody, signature)) {
+      logWarn('webhook.invalid_signature', {
+        path: req.originalUrl,
+        webhookId: String(req.get('x-shopify-webhook-id') || '').trim(),
+      });
       res.status(401).json({ error: 'Invalid webhook signature' });
       return;
     }
@@ -32,6 +36,10 @@ router.post(
     try {
       order = JSON.parse(rawBody.toString('utf8'));
     } catch (error) {
+      logWarn('webhook.invalid_json', {
+        path: req.originalUrl,
+        message: error.message,
+      });
       res.status(400).json({ error: 'Invalid JSON payload' });
       return;
     }
@@ -52,4 +60,3 @@ router.post(
 );
 
 module.exports = router;
-

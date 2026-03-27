@@ -3,6 +3,7 @@ const crypto = require('node:crypto');
 const { env } = require('../config/env');
 const { db } = require('../db/client');
 const { matchOrder } = require('./match');
+const { logInfo, logWarn } = require('../utils/logger');
 const { resolveLimit } = require('../utils/pagination');
 
 function verifyShopifySignature(rawBody, signature) {
@@ -110,12 +111,25 @@ function upsertOrder(order, rawBody) {
     .get(shopifyOrderId);
 }
 
-function hasProcessedCallback(shopifyOrderId) {
+function hasSuccessfulCallback(shopifyOrderId) {
   const row = db
-    .prepare('SELECT id FROM callbacks WHERE shopify_order_id = ? LIMIT 1')
+    .prepare(
+      `
+        SELECT id
+        FROM callbacks
+        WHERE shopify_order_id = ? AND status = 'success'
+        LIMIT 1
+      `
+    )
     .get(shopifyOrderId);
 
   return Boolean(row);
+}
+
+function findOrderByShopifyOrderId(shopifyOrderId) {
+  return db
+    .prepare('SELECT * FROM orders WHERE shopify_order_id = ? LIMIT 1')
+    .get(shopifyOrderId);
 }
 
 async function processOrderWebhook({ order, rawBody, headers }) {
@@ -140,6 +154,11 @@ async function processOrderWebhook({ order, rawBody, headers }) {
     .get(webhookId);
 
   if (existingEvent?.status === 'processed') {
+    logInfo('webhook.duplicate_ignored', {
+      webhookId,
+      shopifyOrderId,
+      reason: 'webhook_already_processed',
+    });
     return { duplicate: true, reason: 'webhook_already_processed' };
   }
 
@@ -151,6 +170,12 @@ async function processOrderWebhook({ order, rawBody, headers }) {
   });
 
   const orderRecord = upsertOrder(order, rawBody);
+  logInfo('webhook.received', {
+    webhookId,
+    topic,
+    shopifyOrderId,
+    financialStatus: order.financial_status || '',
+  });
 
   if (String(order.financial_status || '').toLowerCase() === 'pending') {
     updateOrderStatus(
@@ -166,14 +191,19 @@ async function processOrderWebhook({ order, rawBody, headers }) {
       status: 'processed',
     });
 
+    logInfo('webhook.ignored_pending', {
+      webhookId,
+      shopifyOrderId,
+    });
+
     return { ignored: true, reason: 'financial_status_pending' };
   }
 
-  if (hasProcessedCallback(shopifyOrderId)) {
+  if (hasSuccessfulCallback(shopifyOrderId)) {
     updateOrderStatus(
       orderRecord.id,
       'duplicate_ignored',
-      'callback_already_recorded'
+      'callback_already_succeeded'
     );
 
     saveWebhookEvent({
@@ -183,17 +213,32 @@ async function processOrderWebhook({ order, rawBody, headers }) {
       status: 'processed',
     });
 
-    return { duplicate: true, reason: 'callback_already_recorded' };
+    logInfo('webhook.callback_already_succeeded', {
+      webhookId,
+      shopifyOrderId,
+    });
+
+    return { duplicate: true, reason: 'callback_already_succeeded' };
   }
 
   try {
-    const result = await matchOrder(orderRecord);
+    const result = await matchOrder(orderRecord, {
+      triggerSource: 'webhook',
+    });
 
     saveWebhookEvent({
       webhookId,
       topic,
       shopifyOrderId,
       status: 'processed',
+    });
+
+    logInfo('webhook.processed', {
+      webhookId,
+      shopifyOrderId,
+      matched: result.matched,
+      callbackStatus: result.callbackStatus || '',
+      attemptsUsed: result.attemptsUsed || 0,
     });
 
     return result;
@@ -209,6 +254,51 @@ async function processOrderWebhook({ order, rawBody, headers }) {
     });
 
     throw error;
+  }
+}
+
+async function retryOrderCallback(req, res, next) {
+  try {
+    const shopifyOrderId = String(req.params.orderId || '').trim();
+
+    if (!shopifyOrderId) {
+      res.status(400).json({ error: 'Missing order id' });
+      return;
+    }
+
+    const order = findOrderByShopifyOrderId(shopifyOrderId);
+
+    if (!order) {
+      res.status(404).json({ error: 'Order not found' });
+      return;
+    }
+
+    if (String(order.financial_status || '').toLowerCase() === 'pending') {
+      res.status(409).json({ error: 'Pending orders cannot be retried' });
+      return;
+    }
+
+    if (hasSuccessfulCallback(shopifyOrderId)) {
+      res.status(409).json({ error: 'Callback already succeeded' });
+      return;
+    }
+
+    logWarn('callback.manual_retry_requested', {
+      shopifyOrderId,
+      currentStatus: order.status,
+    });
+
+    const result = await matchOrder(order, {
+      triggerSource: 'manual_retry',
+    });
+
+    res.json({
+      ok: true,
+      orderId: shopifyOrderId,
+      result,
+    });
+  } catch (error) {
+    next(error);
   }
 }
 
@@ -272,4 +362,5 @@ module.exports = {
   verifyShopifySignature,
   listOrders,
   listWebhookEvents,
+  retryOrderCallback,
 };
