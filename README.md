@@ -7,8 +7,9 @@
 - 接收落地页上报的 `ttclid` / `fbclid`
 - 记录真实访问 IP、访问时间、产品路径和 User-Agent
 - 接收 Shopify 订单 Webhook，并执行 HMAC 验签
-- 在时间窗口内匹配访客与订单
+- 在时间窗口内用“时间差 + 商品信息 + IP / 地区信息”匹配访客与订单
 - 回传 TikTok / Facebook `Purchase` 事件
+- 为 webhook、订单和回传记录生成统一 `trace_id`，方便排查
 - 提供看板接口：访客、订单、匹配、回传、Webhook 事件、统计摘要
 - 使用 SQLite 持久化数据，并通过 Docker volume 保留数据库文件
 
@@ -74,6 +75,12 @@ http://localhost:38417/ui
 docker compose logs -f api
 ```
 
+6. 运行自动化测试：
+
+```bash
+docker compose exec -T api npm test
+```
+
 ## 核心环境变量
 
 | 变量 | 说明 |
@@ -135,6 +142,9 @@ docker compose logs -f api
 - 该接口需要和其他看板接口一样携带 `API_AUTH_TOKEN`
 - 如果订单已经成功回传，接口会返回 `409`
 - `GET /api/system` 提供仅限已鉴权用户查看的详细系统状态，包括数据库与进程信息
+- `GET /api/system` 现在还会返回 TikTok / Facebook 的配置自检结果，WebUI 会直接显示“已就绪 / 待补齐”
+- `GET /api/orders`、`GET /api/callbacks`、`GET /api/webhook-events` 会返回 `trace_id`，方便一条订单一路查到底
+- `GET /api/matches` 会返回 `match_score` 和 `match_signals`，方便判断匹配是否可靠
 
 ## WebUI
 
@@ -157,6 +167,8 @@ http://localhost:38417/ui
 - Token 只会保存在当前浏览器的 localStorage
 - 页面现在支持在订单列表中直接手动重试失败或未完成的订单回传
 - 页面支持“只看异常明细”，方便快速过滤失败订单、失败回调和失败事件
+- 页面会直接显示 TikTok / Facebook 是否已配置完整
+- 订单、回传、Webhook 列表会展示“排查编号”，方便把同一次处理链路串起来看
 
 ## 常用联调示例
 
@@ -212,15 +224,19 @@ curl -X POST http://localhost:38417/api/orders/7480137056487/retry-callback \
 - 回传请求会记录触发来源、尝试次数、HTTP 状态、请求摘要和平台返回摘要
 - 可重试失败会在单次处理流程内自动重试，并保留每次尝试记录
 - 支持通过鉴权接口手动重试失败或已跳过的订单回传
+- 新增多条件匹配评分，匹配结果会记录 `match_score` 和 `match_signals`
+- 新增 `trace_id` 串联 webhook、订单和回传记录，排查时可以一条链路追到底
+- 新增平台配置自检，能更早发现 TikTok / Facebook 的 Pixel 或 Token 漏填
 - 关键入口已经增加基础限流，降低被刷爆或误触发洪峰的风险
 - 生产环境下会强制要求配置非默认的 `API_AUTH_TOKEN`
 - Docker Compose 挂载命名卷，容器重建后数据仍可保留
 - `.gitignore` 已覆盖敏感配置和本地数据库文件
+- 已补充最关键的自动化测试：webhook 验签、visitor 入库、匹配评分、回传失败重试
 
 ## 目前仍建议继续做的增强
 
-- 为未匹配订单保存更细的诊断信息
-- 补充自动化测试
+- 将 webhook 回传链路改成异步任务队列
+- 增加自动备份与恢复方案
 - 根据业务量评估是否从 SQLite 升级到 MySQL / PostgreSQL
 
 ## 相关文件

@@ -1,6 +1,6 @@
 const os = require('node:os');
 
-const { env } = require('../config/env');
+const { env, getPlatformConfigChecks } = require('../config/env');
 const { db } = require('../db/client');
 
 function countTable(tableName) {
@@ -22,6 +22,7 @@ function summarizeByStatus(tableName) {
 
 function buildSystemDetail() {
   const databasePing = db.prepare('SELECT 1 AS ok').get();
+  const platformChecks = getPlatformConfigChecks();
 
   return {
     ok: databasePing.ok === 1,
@@ -38,6 +39,10 @@ function buildSystemDetail() {
       path: env.sqlitePath,
       journal_mode: db.pragma('journal_mode', { simple: true }),
     },
+    platforms: platformChecks,
+    warnings: platformChecks
+      .filter((item) => !item.configured)
+      .map((item) => `${item.label} 配置不完整：${item.issues.join('、')}`),
   };
 }
 

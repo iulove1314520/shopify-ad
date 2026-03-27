@@ -31,6 +31,7 @@ const elements = {
   orderStatusList: document.getElementById('orderStatusList'),
   callbackStatusList: document.getElementById('callbackStatusList'),
   eventStatusList: document.getElementById('eventStatusList'),
+  platformStatusList: document.getElementById('platformStatusList'),
   ordersTable: document.getElementById('ordersTable'),
   callbacksTable: document.getElementById('callbacksTable'),
   matchesTable: document.getElementById('matchesTable'),
@@ -122,6 +123,13 @@ function translateStatus(value) {
     received: '已收到',
     duplicate_ignored: '重复跳过',
     ignored_pending: '状态不符跳过',
+    no_visitors_in_window: '时间窗口内没有访客',
+    visitors_missing_click_id: '访客没有广告点击参数',
+    ambiguous_match_candidates: '候选记录过于接近，系统不敢自动判定',
+    product_not_matched: '有访客，但商品对不上',
+    time_gap_too_large: '访客和下单时间差过大',
+    score_below_threshold: '匹配分太低，系统判定不可靠',
+    no_valid_match_candidate: '没有足够可靠的匹配对象',
     ok: '正常',
     tiktok: 'TikTok',
     facebook: 'Facebook',
@@ -183,6 +191,85 @@ function getStatusTone(status = '') {
 
 function badge(value, label = translateStatus(value)) {
   return `<span class="badge badge-${getStatusTone(value)}">${escapeHtml(label)}</span>`;
+}
+
+function describeReasonKey(key) {
+  const dictionary = {
+    reason: '未成功原因',
+    total_visitors: '时间窗口内访客数',
+    eligible_visitors: '带广告参数的访客数',
+    product_match_candidates: '商品能对上的候选数',
+    ip_match_candidates: 'IP 或地区能对上的候选数',
+    best_score: '最高匹配分',
+    score_gap: '第一名领先分差',
+    matched_platform: '匹配平台',
+    confidence: '匹配可信度',
+    score: '匹配分',
+    signals: '命中信号',
+    callback: '回传结果',
+    attempt: '发送次数',
+    failure_code: '失败代码',
+    http_status: 'HTTP 状态',
+    retryable: '是否可重试',
+    error: '失败说明',
+  };
+
+  return dictionary[key] || key;
+}
+
+function translateSignalToken(value) {
+  const dictionary = {
+    time_close: '下单时间很接近',
+    time_window_ok: '在合理时间窗口内',
+    time_far: '时间偏远',
+    product_match: '商品信息一致',
+    product_mismatch: '商品信息不一致',
+    browser_ip_exact: '浏览器 IP 一致',
+    geo_country: '国家一致',
+    geo_region: '地区一致',
+    geo_city: '城市一致',
+  };
+
+  return dictionary[value] || value;
+}
+
+function translateReasonValue(key, value) {
+  if (!value) {
+    return '-';
+  }
+
+  if (key === 'reason' || key === 'matched_platform' || key === 'confidence' || key === 'callback') {
+    return translateStatus(value);
+  }
+
+  if (key === 'signals') {
+    return String(value)
+      .split(',')
+      .map((item) => translateSignalToken(item.trim()))
+      .filter(Boolean)
+      .join('、');
+  }
+
+  if (key === 'retryable') {
+    return String(value).toLowerCase() === 'true' ? '可以自动重试' : '不建议自动重试';
+  }
+
+  return value;
+}
+
+function parseReasonDetail(value) {
+  return String(value || '')
+    .split(';')
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .map((part) => {
+      const [key, ...rest] = part.split('=');
+      return {
+        key: String(key || '').trim(),
+        value: rest.join('=').trim(),
+      };
+    })
+    .filter((item) => item.key && item.value);
 }
 
 function describeMetric(key) {
@@ -263,6 +350,45 @@ function renderStatusList(container, rows, emptyLabel) {
   `;
 }
 
+function renderPlatformStatus(system) {
+  const platforms = Array.isArray(system?.platforms) ? system.platforms : [];
+
+  if (!elements.platformStatusList) {
+    return;
+  }
+
+  if (platforms.length === 0) {
+    renderEmpty(
+      elements.platformStatusList,
+      '暂无平台状态',
+      '登录后可查看 TikTok 和 Facebook 的配置检查结果。'
+    );
+    return;
+  }
+
+  elements.platformStatusList.innerHTML = `
+    <div class="status-list">
+      ${platforms
+        .map((item) => `
+          <div class="status-item">
+            <div class="status-item-left">
+              <strong>${escapeHtml(item.label)}</strong>
+              <span class="platform-issues">
+                ${escapeHtml(
+                  item.configured
+                    ? '关键配置已就绪，可以正常尝试回传。'
+                    : item.issues.join('、')
+                )}
+              </span>
+            </div>
+            ${badge(item.configured ? 'success' : 'failed', item.configured ? '已就绪' : '待补齐')}
+          </div>
+        `)
+        .join('')}
+    </div>
+  `;
+}
+
 function renderEmpty(container, title, message) {
   container.innerHTML = `
     <div class="empty-state">
@@ -287,6 +413,30 @@ function renderTextDetail(value, emptyLabel = '-') {
       <summary>点击查看完整内容</summary>
       <p>${escapeHtml(text)}</p>
     </details>
+  `;
+}
+
+function renderReasonDetail(value, emptyLabel = '暂无说明') {
+  const parts = parseReasonDetail(value);
+  if (parts.length === 0) {
+    return renderTextDetail(value, emptyLabel);
+  }
+
+  return `
+    <div class="reason-list">
+      ${parts
+        .map(
+          (item) => `
+            <div class="reason-item">
+              <span class="reason-key">${escapeHtml(describeReasonKey(item.key))}</span>
+              <span class="reason-value">${escapeHtml(
+                translateReasonValue(item.key, item.value)
+              )}</span>
+            </div>
+          `
+        )
+        .join('')}
+    </div>
   `;
 }
 
@@ -400,6 +550,7 @@ function clearBusinessViews(message) {
   renderEmpty(elements.orderStatusList, '暂无统计数据', fallbackMessage);
   renderEmpty(elements.callbackStatusList, '暂无统计数据', fallbackMessage);
   renderEmpty(elements.eventStatusList, '暂无统计数据', fallbackMessage);
+  renderEmpty(elements.platformStatusList, '暂无平台状态', fallbackMessage);
   renderEmpty(elements.ordersTable, '暂无订单记录', fallbackMessage);
   renderEmpty(elements.callbacksTable, '暂无回调记录', fallbackMessage);
   renderEmpty(elements.matchesTable, '暂无匹配记录', fallbackMessage);
@@ -495,6 +646,7 @@ function renderBusinessViews() {
     stats.webhook_events_by_status,
     '今天暂无事件。'
   );
+  renderPlatformStatus(state.data.system);
 
   renderTable(
     elements.ordersTable,
@@ -510,9 +662,14 @@ function renderBusinessViews() {
         render: (row) => badge(row.status),
       },
       {
+        label: '排查编号',
+        help: '需要找开发排查时，可把这个编号发给他',
+        render: (row) => renderTextDetail(row.trace_id, '暂无编号'),
+      },
+      {
         label: '失败原因',
         help: '如果处理不顺利，这里会写原因',
-        render: (row) => renderTextDetail(row.status_reason, '暂无错误原因'),
+        render: (row) => renderReasonDetail(row.status_reason, '暂无错误原因'),
       },
       {
         label: '订单金额',
@@ -581,6 +738,11 @@ function renderBusinessViews() {
           ),
       },
       {
+        label: '排查编号',
+        help: '同一次处理链路的统一编号',
+        render: (row) => renderTextDetail(row.trace_id, '暂无编号'),
+      },
+      {
         label: '发送结果',
         help: '成功、失败还是已跳过',
         render: (row) => badge(row.status),
@@ -637,6 +799,20 @@ function renderBusinessViews() {
         render: (row) => badge(row.confidence, translateStatus(row.confidence)),
       },
       {
+        label: '匹配分',
+        help: '分数越高，说明越像同一位访客',
+        render: (row) => `<span class="mono">${escapeHtml(row.match_score ?? '-')}</span>`,
+      },
+      {
+        label: '命中信号',
+        help: '系统是根据哪些证据判断匹配的',
+        render: (row) =>
+          renderTextDetail(
+            translateReasonValue('signals', row.match_signals),
+            '暂无命中信号'
+          ),
+      },
+      {
         label: '时间间隔',
         help: '点击到下单过了多少秒',
         render: (row) => `<span class="mono">${escapeHtml(row.time_diff_seconds)}s</span>`,
@@ -669,6 +845,11 @@ function renderBusinessViews() {
         label: '相关订单号',
         help: '此事件对应的订单',
         render: (row) => `<span class="mono">${escapeHtml(row.shopify_order_id)}</span>`,
+      },
+      {
+        label: '排查编号',
+        help: '可用来串联 webhook、订单和回调日志',
+        render: (row) => renderTextDetail(row.trace_id, '暂无编号'),
       },
       {
         label: '处理状态',

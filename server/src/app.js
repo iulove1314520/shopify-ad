@@ -5,7 +5,13 @@ const { env } = require('./config/env');
 const apiRouter = require('./routes/api');
 const webhookRouter = require('./routes/webhook');
 const { getHealth } = require('./modules/system');
-const { requestLogger, logError } = require('./utils/logger');
+const {
+  attachRequestContext,
+  requestLogger,
+  logError,
+  getTraceId,
+  withTraceId,
+} = require('./utils/logger');
 
 function getRequestOrigin(req) {
   return `${req.protocol}://${req.get('host')}`;
@@ -31,6 +37,7 @@ function createApp() {
 
   app.disable('x-powered-by');
   app.set('trust proxy', true);
+  app.use(attachRequestContext);
   app.use(requestLogger);
 
   app.use((req, res, next) => {
@@ -75,12 +82,18 @@ function createApp() {
   });
 
   app.use((error, req, res, next) => {
-    logError('request.failed', {
+    logError(
+      'request.failed',
+      withTraceId(getTraceId(req), {
       message: error.message,
       path: req.originalUrl,
-    });
+      })
+    );
 
-    res.status(500).json({ error: 'Internal Server Error' });
+    res.status(500).json({
+      error: 'Internal Server Error',
+      trace_id: getTraceId(req),
+    });
   });
 
   return app;

@@ -16,6 +16,10 @@ function toList(value) {
     .filter(Boolean);
 }
 
+function hasValue(value) {
+  return Boolean(String(value || '').trim());
+}
+
 const env = {
   nodeEnv: process.env.NODE_ENV || 'production',
   port: toNumber(process.env.PORT, 38417),
@@ -56,6 +60,46 @@ const env = {
   facebookAccessToken: process.env.FACEBOOK_ACCESS_TOKEN || '',
 };
 
+function getPlatformConfigChecks() {
+  const tiktokIssues = [];
+  const facebookIssues = [];
+
+  if (!hasValue(env.tiktokPixelId)) {
+    tiktokIssues.push('缺少 TikTok Pixel ID');
+  }
+
+  if (!hasValue(env.tiktokAccessToken)) {
+    tiktokIssues.push('缺少 TikTok Access Token');
+  }
+
+  if (!hasValue(env.facebookPixelId)) {
+    facebookIssues.push('缺少 Facebook Pixel ID');
+  }
+
+  if (!hasValue(env.facebookAccessToken)) {
+    facebookIssues.push('缺少 Facebook Access Token');
+  }
+
+  return [
+    {
+      id: 'tiktok',
+      label: 'TikTok',
+      configured: tiktokIssues.length === 0,
+      pixelIdConfigured: hasValue(env.tiktokPixelId),
+      accessTokenConfigured: hasValue(env.tiktokAccessToken),
+      issues: tiktokIssues,
+    },
+    {
+      id: 'facebook',
+      label: 'Facebook',
+      configured: facebookIssues.length === 0,
+      pixelIdConfigured: hasValue(env.facebookPixelId),
+      accessTokenConfigured: hasValue(env.facebookAccessToken),
+      issues: facebookIssues,
+    },
+  ];
+}
+
 function validateEnv() {
   const errors = [];
 
@@ -71,4 +115,4 @@ function validateEnv() {
   return errors;
 }
 
-module.exports = { env, validateEnv };
+module.exports = { env, validateEnv, getPlatformConfigChecks };

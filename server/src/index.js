@@ -1,8 +1,8 @@
-const { env, validateEnv } = require('./config/env');
+const { env, validateEnv, getPlatformConfigChecks } = require('./config/env');
 const { db } = require('./db/client');
 const { initDatabase } = require('./db/init');
 const { createApp } = require('./app');
-const { logInfo, logError } = require('./utils/logger');
+const { logInfo, logWarn, logError } = require('./utils/logger');
 
 const configErrors = validateEnv();
 if (configErrors.length > 0) {
@@ -13,6 +13,15 @@ if (configErrors.length > 0) {
 }
 
 initDatabase();
+
+for (const platform of getPlatformConfigChecks()) {
+  if (!platform.configured) {
+    logWarn('config.platform_incomplete', {
+      platform: platform.label,
+      issues: platform.issues,
+    });
+  }
+}
 
 const app = createApp();
 const server = app.listen(env.port, () => {

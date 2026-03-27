@@ -3,7 +3,12 @@ const crypto = require('node:crypto');
 const { env } = require('../config/env');
 const { db } = require('../db/client');
 const { matchOrder } = require('./match');
-const { logInfo, logWarn } = require('../utils/logger');
+const {
+  logInfo,
+  logWarn,
+  getTraceId,
+  withTraceId,
+} = require('../utils/logger');
 const { resolveLimit } = require('../utils/pagination');
 
 function verifyShopifySignature(rawBody, signature) {
@@ -34,11 +39,11 @@ function saveWebhookEvent({
   webhookId,
   topic,
   shopifyOrderId,
+  traceId = '',
   status,
   errorMessage = '',
 }) {
-  const processedAt =
-    status === 'received' ? null : new Date().toISOString();
+  const processedAt = status === 'received' ? null : new Date().toISOString();
 
   db.prepare(
     `
@@ -46,33 +51,43 @@ function saveWebhookEvent({
         webhook_id,
         topic,
         shopify_order_id,
+        trace_id,
         signature_valid,
         status,
         error_message,
         processed_at
-      ) VALUES (?, ?, ?, 1, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, 1, ?, ?, ?)
       ON CONFLICT(webhook_id) DO UPDATE SET
         topic = excluded.topic,
         shopify_order_id = excluded.shopify_order_id,
+        trace_id = excluded.trace_id,
         signature_valid = 1,
         status = excluded.status,
         error_message = excluded.error_message,
         processed_at = excluded.processed_at
     `
-  ).run(webhookId, topic, shopifyOrderId, status, errorMessage, processedAt);
+  ).run(
+    webhookId,
+    topic,
+    shopifyOrderId,
+    traceId,
+    status,
+    errorMessage,
+    processedAt
+  );
 }
 
-function updateOrderStatus(orderId, status, statusReason = '') {
+function updateOrderStatus(orderId, status, statusReason = '', traceId = '') {
   db.prepare(
     `
       UPDATE orders
-      SET status = ?, status_reason = ?, processed_at = ?
+      SET status = ?, status_reason = ?, last_trace_id = ?, processed_at = ?
       WHERE id = ?
     `
-  ).run(status, statusReason, new Date().toISOString(), orderId);
+  ).run(status, statusReason, traceId, new Date().toISOString(), orderId);
 }
 
-function upsertOrder(order, rawBody) {
+function upsertOrder(order, rawBody, traceId = '') {
   const shopifyOrderId = String(order.id || '').trim();
 
   db.prepare(
@@ -85,15 +100,17 @@ function upsertOrder(order, rawBody) {
         zip,
         financial_status,
         raw_payload,
-        status
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        status,
+        last_trace_id
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(shopify_order_id) DO UPDATE SET
         created_at = excluded.created_at,
         total_price = excluded.total_price,
         currency = excluded.currency,
         zip = excluded.zip,
         financial_status = excluded.financial_status,
-        raw_payload = excluded.raw_payload
+        raw_payload = excluded.raw_payload,
+        last_trace_id = excluded.last_trace_id
     `
   ).run(
     shopifyOrderId,
@@ -103,7 +120,8 @@ function upsertOrder(order, rawBody) {
     String(order.shipping_address?.zip || ''),
     String(order.financial_status || ''),
     rawBody.toString('utf8'),
-    'received'
+    'received',
+    traceId
   );
 
   return db
@@ -132,7 +150,7 @@ function findOrderByShopifyOrderId(shopifyOrderId) {
     .get(shopifyOrderId);
 }
 
-async function processOrderWebhook({ order, rawBody, headers }) {
+async function processOrderWebhook({ order, rawBody, headers, traceId = '' }) {
   const webhookId =
     String(headers['x-shopify-webhook-id'] || '').trim() || hashBody(rawBody);
   const topic = String(headers['x-shopify-topic'] || 'orders/paid').trim();
@@ -143,6 +161,7 @@ async function processOrderWebhook({ order, rawBody, headers }) {
       webhookId,
       topic,
       shopifyOrderId: '',
+      traceId,
       status: 'failed',
       errorMessage: 'Missing Shopify order id',
     });
@@ -154,101 +173,124 @@ async function processOrderWebhook({ order, rawBody, headers }) {
     .get(webhookId);
 
   if (existingEvent?.status === 'processed') {
-    logInfo('webhook.duplicate_ignored', {
-      webhookId,
-      shopifyOrderId,
-      reason: 'webhook_already_processed',
-    });
-    return { duplicate: true, reason: 'webhook_already_processed' };
+    logInfo(
+      'webhook.duplicate_ignored',
+      withTraceId(traceId, {
+        webhookId,
+        shopifyOrderId,
+        reason: 'webhook_already_processed',
+      })
+    );
+    return { duplicate: true, reason: 'webhook_already_processed', traceId };
   }
 
   saveWebhookEvent({
     webhookId,
     topic,
     shopifyOrderId,
+    traceId,
     status: 'received',
   });
 
-  const orderRecord = upsertOrder(order, rawBody);
-  logInfo('webhook.received', {
-    webhookId,
-    topic,
-    shopifyOrderId,
-    financialStatus: order.financial_status || '',
-  });
+  const orderRecord = upsertOrder(order, rawBody, traceId);
+  logInfo(
+    'webhook.received',
+    withTraceId(traceId, {
+      webhookId,
+      topic,
+      shopifyOrderId,
+      financialStatus: order.financial_status || '',
+    })
+  );
 
   if (String(order.financial_status || '').toLowerCase() === 'pending') {
     updateOrderStatus(
       orderRecord.id,
       'ignored_pending',
-      'financial_status_pending'
+      'financial_status_pending',
+      traceId
     );
 
     saveWebhookEvent({
       webhookId,
       topic,
       shopifyOrderId,
+      traceId,
       status: 'processed',
     });
 
-    logInfo('webhook.ignored_pending', {
-      webhookId,
-      shopifyOrderId,
-    });
+    logInfo(
+      'webhook.ignored_pending',
+      withTraceId(traceId, {
+        webhookId,
+        shopifyOrderId,
+      })
+    );
 
-    return { ignored: true, reason: 'financial_status_pending' };
+    return { ignored: true, reason: 'financial_status_pending', traceId };
   }
 
   if (hasSuccessfulCallback(shopifyOrderId)) {
     updateOrderStatus(
       orderRecord.id,
       'duplicate_ignored',
-      'callback_already_succeeded'
+      'callback_already_succeeded',
+      traceId
     );
 
     saveWebhookEvent({
       webhookId,
       topic,
       shopifyOrderId,
+      traceId,
       status: 'processed',
     });
 
-    logInfo('webhook.callback_already_succeeded', {
-      webhookId,
-      shopifyOrderId,
-    });
+    logInfo(
+      'webhook.callback_already_succeeded',
+      withTraceId(traceId, {
+        webhookId,
+        shopifyOrderId,
+      })
+    );
 
-    return { duplicate: true, reason: 'callback_already_succeeded' };
+    return { duplicate: true, reason: 'callback_already_succeeded', traceId };
   }
 
   try {
     const result = await matchOrder(orderRecord, {
       triggerSource: 'webhook',
+      traceId,
     });
 
     saveWebhookEvent({
       webhookId,
       topic,
       shopifyOrderId,
+      traceId,
       status: 'processed',
     });
 
-    logInfo('webhook.processed', {
-      webhookId,
-      shopifyOrderId,
-      matched: result.matched,
-      callbackStatus: result.callbackStatus || '',
-      attemptsUsed: result.attemptsUsed || 0,
-    });
+    logInfo(
+      'webhook.processed',
+      withTraceId(traceId, {
+        webhookId,
+        shopifyOrderId,
+        matched: result.matched,
+        callbackStatus: result.callbackStatus || '',
+        attemptsUsed: result.attemptsUsed || 0,
+      })
+    );
 
     return result;
   } catch (error) {
-    updateOrderStatus(orderRecord.id, 'processing_failed', error.message);
+    updateOrderStatus(orderRecord.id, 'processing_failed', error.message, traceId);
 
     saveWebhookEvent({
       webhookId,
       topic,
       shopifyOrderId,
+      traceId,
       status: 'failed',
       errorMessage: error.message,
     });
@@ -260,6 +302,7 @@ async function processOrderWebhook({ order, rawBody, headers }) {
 async function retryOrderCallback(req, res, next) {
   try {
     const shopifyOrderId = String(req.params.orderId || '').trim();
+    const traceId = getTraceId(req);
 
     if (!shopifyOrderId) {
       res.status(400).json({ error: 'Missing order id' });
@@ -283,18 +326,23 @@ async function retryOrderCallback(req, res, next) {
       return;
     }
 
-    logWarn('callback.manual_retry_requested', {
-      shopifyOrderId,
-      currentStatus: order.status,
-    });
+    logWarn(
+      'callback.manual_retry_requested',
+      withTraceId(traceId, {
+        shopifyOrderId,
+        currentStatus: order.status,
+      })
+    );
 
     const result = await matchOrder(order, {
       triggerSource: 'manual_retry',
+      traceId,
     });
 
     res.json({
       ok: true,
       orderId: shopifyOrderId,
+      trace_id: traceId,
       result,
     });
   } catch (error) {
@@ -316,6 +364,7 @@ function listOrders(req, res, next) {
             financial_status,
             status,
             status_reason,
+            last_trace_id AS trace_id,
             processed_at,
             created_record_at
           FROM orders
@@ -340,6 +389,7 @@ function listWebhookEvents(req, res, next) {
             webhook_id,
             topic,
             shopify_order_id,
+            trace_id,
             status,
             error_message,
             received_at,

@@ -1,7 +1,12 @@
 const express = require('express');
 
 const { env } = require('../config/env');
-const { logError, logWarn } = require('../utils/logger');
+const {
+  logError,
+  logWarn,
+  getTraceId,
+  withTraceId,
+} = require('../utils/logger');
 const { createRateLimiter } = require('../utils/rate-limit');
 const {
   processOrderWebhook,
@@ -20,6 +25,8 @@ router.post(
   webhookRateLimiter,
   express.raw({ type: 'application/json', limit: '1mb' }),
   (req, res) => {
+    const traceId = getTraceId(req);
+
     if (!env.shopifyWebhookSecret) {
       res
         .status(503)
@@ -31,10 +38,13 @@ router.post(
     const signature = String(req.get('x-shopify-hmac-sha256') || '').trim();
 
     if (!verifyShopifySignature(rawBody, signature)) {
-      logWarn('webhook.invalid_signature', {
-        path: req.originalUrl,
-        webhookId: String(req.get('x-shopify-webhook-id') || '').trim(),
-      });
+      logWarn(
+        'webhook.invalid_signature',
+        withTraceId(traceId, {
+          path: req.originalUrl,
+          webhookId: String(req.get('x-shopify-webhook-id') || '').trim(),
+        })
+      );
       res.status(401).json({ error: 'Invalid webhook signature' });
       return;
     }
@@ -43,10 +53,13 @@ router.post(
     try {
       order = JSON.parse(rawBody.toString('utf8'));
     } catch (error) {
-      logWarn('webhook.invalid_json', {
-        path: req.originalUrl,
-        message: error.message,
-      });
+      logWarn(
+        'webhook.invalid_json',
+        withTraceId(traceId, {
+          path: req.originalUrl,
+          message: error.message,
+        })
+      );
       res.status(400).json({ error: 'Invalid JSON payload' });
       return;
     }
@@ -57,11 +70,15 @@ router.post(
       order,
       rawBody,
       headers: req.headers,
+      traceId,
     }).catch((error) => {
-      logError('webhook.processing_failed', {
-        message: error.message,
-        shopifyOrderId: String(order.id || ''),
-      });
+      logError(
+        'webhook.processing_failed',
+        withTraceId(traceId, {
+          message: error.message,
+          shopifyOrderId: String(order.id || ''),
+        })
+      );
     });
   }
 );

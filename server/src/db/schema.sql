@@ -22,6 +22,7 @@ CREATE TABLE IF NOT EXISTS orders (
   raw_payload TEXT NOT NULL,
   status TEXT NOT NULL DEFAULT 'received',
   status_reason TEXT NOT NULL DEFAULT '',
+  last_trace_id TEXT NOT NULL DEFAULT '',
   processed_at TEXT,
   created_record_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
@@ -34,6 +35,7 @@ CREATE TABLE IF NOT EXISTS webhook_events (
   webhook_id TEXT NOT NULL UNIQUE,
   topic TEXT NOT NULL DEFAULT '',
   shopify_order_id TEXT NOT NULL DEFAULT '',
+  trace_id TEXT NOT NULL DEFAULT '',
   signature_valid INTEGER NOT NULL DEFAULT 0,
   status TEXT NOT NULL DEFAULT 'received',
   error_message TEXT NOT NULL DEFAULT '',
@@ -51,6 +53,8 @@ CREATE TABLE IF NOT EXISTS matches (
   click_id TEXT NOT NULL,
   platform TEXT NOT NULL,
   confidence TEXT NOT NULL,
+  match_score INTEGER NOT NULL DEFAULT 0,
+  match_signals TEXT NOT NULL DEFAULT '',
   match_time TEXT NOT NULL,
   time_diff_seconds INTEGER NOT NULL DEFAULT 0,
   FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE,
@@ -66,6 +70,7 @@ CREATE TABLE IF NOT EXISTS callbacks (
   shopify_order_id TEXT NOT NULL,
   platform TEXT NOT NULL,
   trigger_source TEXT NOT NULL DEFAULT 'webhook',
+  trace_id TEXT NOT NULL DEFAULT '',
   attempt_number INTEGER NOT NULL DEFAULT 1,
   status TEXT NOT NULL,
   retryable INTEGER NOT NULL DEFAULT 0,
