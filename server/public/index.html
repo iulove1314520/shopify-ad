@@ -148,8 +148,16 @@
 
         <!-- Detailed Tables Area -->
         <div class="section-title" id="orders">
-          <h2>最近订单列表</h2>
-          <p>查看最近订单的处理结果和失败原因。</p>
+          <div class="section-title-row">
+            <div>
+              <h2>最近订单列表</h2>
+              <p>查看最近订单的处理结果和失败原因，也可以直接发起手动重试。</p>
+            </div>
+            <div class="section-tools">
+              <button id="failedFilterBtn" class="btn btn-ghost btn-sm" type="button">只看异常明细</button>
+              <span id="filterStatusText" class="table-tool-hint">当前显示全部订单、回调和事件记录。</span>
+            </div>
+          </div>
         </div>
         <section class="table-section glass-panel">
           <div class="table-wrapper" id="ordersTable"></div>

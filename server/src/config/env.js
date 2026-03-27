@@ -9,9 +9,17 @@ function toNumber(value, fallback) {
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
+function toList(value) {
+  return String(value || '')
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
 const env = {
   nodeEnv: process.env.NODE_ENV || 'production',
   port: toNumber(process.env.PORT, 38417),
+  corsAllowOrigins: toList(process.env.CORS_ALLOW_ORIGINS),
   sqlitePath:
     process.env.SQLITE_PATH || path.resolve(__dirname, '../../../data/app.db'),
   sqliteBusyTimeoutMs: toNumber(process.env.SQLITE_BUSY_TIMEOUT_MS, 5000),
@@ -20,6 +28,21 @@ const env = {
   requestTimeoutMs: toNumber(process.env.REQUEST_TIMEOUT_MS, 10000),
   callbackMaxAttempts: toNumber(process.env.CALLBACK_MAX_ATTEMPTS, 2),
   callbackRetryDelayMs: toNumber(process.env.CALLBACK_RETRY_DELAY_MS, 800),
+  visitorRateLimitWindowMs: toNumber(
+    process.env.VISITOR_RATE_LIMIT_WINDOW_MS,
+    60000
+  ),
+  visitorRateLimitMax: toNumber(process.env.VISITOR_RATE_LIMIT_MAX, 90),
+  webhookRateLimitWindowMs: toNumber(
+    process.env.WEBHOOK_RATE_LIMIT_WINDOW_MS,
+    60000
+  ),
+  webhookRateLimitMax: toNumber(process.env.WEBHOOK_RATE_LIMIT_MAX, 120),
+  retryRateLimitWindowMs: toNumber(
+    process.env.RETRY_RATE_LIMIT_WINDOW_MS,
+    60000
+  ),
+  retryRateLimitMax: toNumber(process.env.RETRY_RATE_LIMIT_MAX, 10),
   defaultListLimit: toNumber(process.env.DEFAULT_LIST_LIMIT, 100),
   maxListLimit: toNumber(process.env.MAX_LIST_LIMIT, 500),
   apiAuthToken: process.env.API_AUTH_TOKEN || '',
@@ -33,4 +56,19 @@ const env = {
   facebookAccessToken: process.env.FACEBOOK_ACCESS_TOKEN || '',
 };
 
-module.exports = { env };
+function validateEnv() {
+  const errors = [];
+
+  if (
+    env.nodeEnv === 'production' &&
+    (!env.apiAuthToken || env.apiAuthToken === 'change_me')
+  ) {
+    errors.push(
+      'API_AUTH_TOKEN must be configured to a non-default value in production'
+    );
+  }
+
+  return errors;
+}
+
+module.exports = { env, validateEnv };

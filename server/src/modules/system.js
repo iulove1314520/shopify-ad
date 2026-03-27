@@ -20,26 +20,45 @@ function summarizeByStatus(tableName) {
     .all();
 }
 
+function buildSystemDetail() {
+  const databasePing = db.prepare('SELECT 1 AS ok').get();
+
+  return {
+    ok: databasePing.ok === 1,
+    service: 'shopee-cpas-backend',
+    environment: env.nodeEnv,
+    timestamp: new Date().toISOString(),
+    uptime_seconds: Math.floor(process.uptime()),
+    process: {
+      pid: process.pid,
+      hostname: os.hostname(),
+    },
+    database: {
+      reachable: true,
+      path: env.sqlitePath,
+      journal_mode: db.pragma('journal_mode', { simple: true }),
+    },
+  };
+}
+
 function getHealth(req, res, next) {
   try {
-    const databasePing = db.prepare('SELECT 1 AS ok').get();
+    const detail = buildSystemDetail();
 
     res.json({
-      ok: databasePing.ok === 1,
-      service: 'shopee-cpas-backend',
-      environment: env.nodeEnv,
-      timestamp: new Date().toISOString(),
-      uptime_seconds: Math.floor(process.uptime()),
-      process: {
-        pid: process.pid,
-        hostname: os.hostname(),
-      },
-      database: {
-        reachable: true,
-        path: env.sqlitePath,
-        journal_mode: db.pragma('journal_mode', { simple: true }),
-      },
+      ok: detail.ok,
+      service: detail.service,
+      environment: detail.environment,
+      timestamp: detail.timestamp,
     });
+  } catch (error) {
+    next(error);
+  }
+}
+
+function getSystemDetail(req, res, next) {
+  try {
+    res.json(buildSystemDetail());
   } catch (error) {
     next(error);
   }
@@ -67,6 +86,6 @@ function getStats(req, res, next) {
 
 module.exports = {
   getHealth,
+  getSystemDetail,
   getStats,
 };
-

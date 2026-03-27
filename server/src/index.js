@@ -1,8 +1,16 @@
-const { env } = require('./config/env');
+const { env, validateEnv } = require('./config/env');
 const { db } = require('./db/client');
 const { initDatabase } = require('./db/init');
 const { createApp } = require('./app');
 const { logInfo, logError } = require('./utils/logger');
+
+const configErrors = validateEnv();
+if (configErrors.length > 0) {
+  for (const message of configErrors) {
+    logError('config.invalid', { message });
+  }
+  process.exit(1);
+}
 
 initDatabase();
 
@@ -30,4 +38,3 @@ process.on('uncaughtException', (error) => {
 process.on('unhandledRejection', (reason) => {
   logError('process.unhandled_rejection', { reason: String(reason) });
 });
-

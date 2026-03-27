@@ -183,6 +183,9 @@ body.aurora-theme {
 .btn-primary:hover { background: #fff; box-shadow: 0 0 15px rgba(255,255,255,0.2); }
 .btn-ghost { background: rgba(255,255,255,0.05); color: var(--text-main); }
 .btn-ghost:hover { background: rgba(255,255,255,0.1); }
+.btn-ghost.is-active { background: rgba(0, 240, 255, 0.12); color: var(--glow-cyan); border: 1px solid rgba(0, 240, 255, 0.25); }
+.btn-inline { padding: 8px 12px; font-size: 0.8rem; white-space: nowrap; }
+.btn[disabled] { opacity: 0.55; cursor: not-allowed; box-shadow: none; }
 
 /* Indicators */
 .status-indicator { font-size: 0.75rem; display: flex; align-items: center; gap: 6px; padding: 6px 10px; border-radius: 8px; }
@@ -191,6 +194,8 @@ body.aurora-theme {
 .status-indicator.danger { background: var(--danger-bg); color: var(--danger); }
 .status-dot { width: 6px; height: 6px; border-radius: 50%; box-shadow: 0 0 8px currentColor; }
 .status-dot.warning { background: var(--warning); }
+.status-dot.success { background: var(--success); }
+.status-dot.danger { background: var(--danger); }
 
 /* Main Workspace */
 .topbar { padding: 32px 40px 16px; display: flex; justify-content: space-between; align-items: flex-end; }
@@ -228,8 +233,11 @@ body.aurora-theme {
 
 /* Typographic sections */
 .section-title { margin: 40px 0 20px; }
+.section-title-row { display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; }
 .section-title h2 { font-family: var(--font-display); font-size: 1.5rem; letter-spacing: -0.5px; color: #fff; display: flex; align-items: center; gap: 12px; }
 .section-title p { color: var(--text-dark); font-size: 0.9rem; margin-top: 6px; }
+.section-tools { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; justify-content: flex-end; }
+.table-tool-hint { color: var(--text-dim); font-size: 0.8rem; max-width: 320px; text-align: right; line-height: 1.5; }
 
 .count-badge { font-size: 0.75rem; background: rgba(255,255,255,0.1); color: var(--text-dim); padding: 4px 8px; border-radius: 6px; font-weight: 500; font-family: var(--font-ui); letter-spacing: normal; vertical-align: middle;}
 
@@ -297,6 +305,7 @@ tbody td { padding: 16px 24px; font-size: 0.9rem; vertical-align: top; line-heig
 .badge-warning { background: var(--warning-bg); color: var(--warning); border: 1px solid rgba(251,192,45,0.2); box-shadow: 0 0 10px rgba(251,192,45,0.1); }
 .badge-info { background: var(--info-bg); color: var(--info); border: 1px solid rgba(0,210,255,0.2); box-shadow: 0 0 10px rgba(0,210,255,0.1); }
 .badge-muted { background: rgba(255,255,255,0.05); color: var(--text-dim); border: 1px solid rgba(255,255,255,0.1); }
+.table-action-cell { min-width: 130px; }
 
 /* Details/Folding Error messages */
 .text-detail { background: rgba(0,0,0,0.2); border-left: 2px solid var(--text-dark); padding: 0 0 0 12px; margin-top: 4px; }
@@ -332,4 +341,7 @@ tbody td { padding: 16px 24px; font-size: 0.9rem; vertical-align: top; line-heig
   .btn-group-row { margin-bottom: 8px; }
   .scroll-canvas { padding: 0 16px 40px; }
   .topbar { padding: 24px 16px 16px; flex-direction: column; align-items: stretch; gap: 16px; }
+  .section-title-row { flex-direction: column; align-items: stretch; }
+  .section-tools { justify-content: flex-start; }
+  .table-tool-hint { text-align: left; max-width: none; }
 }

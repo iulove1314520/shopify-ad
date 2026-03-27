@@ -79,12 +79,19 @@ docker compose logs -f api
 | 变量 | 说明 |
 | --- | --- |
 | `PORT` | API 服务监听端口，当前默认 `38417` |
+| `CORS_ALLOW_ORIGINS` | 允许跨域访问的来源列表，走同域代理时可留空 |
 | `SQLITE_PATH` | SQLite 数据库文件路径 |
 | `VISITOR_RETENTION_DAYS` | 访客数据保留天数 |
 | `MATCH_WINDOW_DAYS` | 订单匹配时间窗口，单位天 |
 | `REQUEST_TIMEOUT_MS` | 调用第三方平台 API 的超时时间 |
 | `CALLBACK_MAX_ATTEMPTS` | 单次回传流程里允许的最大尝试次数 |
 | `CALLBACK_RETRY_DELAY_MS` | 回传失败且可重试时的重试间隔，单位毫秒 |
+| `VISITOR_RATE_LIMIT_WINDOW_MS` | 访客上报接口的限流窗口 |
+| `VISITOR_RATE_LIMIT_MAX` | 访客上报接口限流窗口内允许的最大请求数 |
+| `WEBHOOK_RATE_LIMIT_WINDOW_MS` | Shopify Webhook 接口的限流窗口 |
+| `WEBHOOK_RATE_LIMIT_MAX` | Shopify Webhook 接口限流窗口内允许的最大请求数 |
+| `RETRY_RATE_LIMIT_WINDOW_MS` | 手动重试接口的限流窗口 |
+| `RETRY_RATE_LIMIT_MAX` | 手动重试接口限流窗口内允许的最大请求数 |
 | `DEFAULT_LIST_LIMIT` | 列表接口默认返回条数 |
 | `MAX_LIST_LIMIT` | 列表接口允许查询的最大条数 |
 | `API_AUTH_TOKEN` | 看板接口鉴权令牌 |
@@ -112,6 +119,7 @@ docker compose logs -f api
 接口列表：
 
 - `GET /api/stats`
+- `GET /api/system`
 - `GET /api/visitors`
 - `GET /api/orders`
 - `POST /api/orders/:orderId/retry-callback`
@@ -126,6 +134,7 @@ docker compose logs -f api
 - `POST /api/orders/:orderId/retry-callback` 用于手动重试失败或已跳过的广告平台回传
 - 该接口需要和其他看板接口一样携带 `API_AUTH_TOKEN`
 - 如果订单已经成功回传，接口会返回 `409`
+- `GET /api/system` 提供仅限已鉴权用户查看的详细系统状态，包括数据库与进程信息
 
 ## WebUI
 
@@ -146,7 +155,8 @@ http://localhost:38417/ui
 
 - WebUI 不会自动读取服务器上的 `.env`
 - Token 只会保存在当前浏览器的 localStorage
-- 页面本身是只读的，不会修改订单或回传数据
+- 页面现在支持在订单列表中直接手动重试失败或未完成的订单回传
+- 页面支持“只看异常明细”，方便快速过滤失败订单、失败回调和失败事件
 
 ## 常用联调示例
 
@@ -196,12 +206,14 @@ curl -X POST http://localhost:38417/api/orders/7480137056487/retry-callback \
 相较于最初骨架版本，当前项目已经补上了这些能力：
 
 - SQLite 持久化而不是内存存储
-- 健康检查包含数据库状态
+- 公网 `/health` 已收敛为精简状态返回，详细状态改为鉴权接口 `GET /api/system`
 - 订单状态原因 `status_reason`，便于排查未匹配或回传失败
 - 看板调试接口：`orders`、`webhook-events`、`stats`
 - 回传请求会记录触发来源、尝试次数、HTTP 状态、请求摘要和平台返回摘要
 - 可重试失败会在单次处理流程内自动重试，并保留每次尝试记录
 - 支持通过鉴权接口手动重试失败或已跳过的订单回传
+- 关键入口已经增加基础限流，降低被刷爆或误触发洪峰的风险
+- 生产环境下会强制要求配置非默认的 `API_AUTH_TOKEN`
 - Docker Compose 挂载命名卷，容器重建后数据仍可保留
 - `.gitignore` 已覆盖敏感配置和本地数据库文件
 
@@ -209,7 +221,6 @@ curl -X POST http://localhost:38417/api/orders/7480137056487/retry-callback \
 
 - 为未匹配订单保存更细的诊断信息
 - 补充自动化测试
-- 生产环境前加上反向代理、HTTPS 和访问控制
 - 根据业务量评估是否从 SQLite 升级到 MySQL / PostgreSQL
 
 ## 相关文件
