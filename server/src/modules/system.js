@@ -3,6 +3,10 @@ const os = require('node:os');
 const { env, getPlatformConfigChecks } = require('../config/env');
 const { db } = require('../db/client');
 
+const CLEANUP_RETENTION_MIN_DAYS = 1;
+const CLEANUP_RETENTION_MAX_DAYS = 3650;
+const PURGE_ALL_CONFIRM_TEXT = '清空全部数据';
+
 function countTable(tableName) {
   return db.prepare(`SELECT COUNT(*) AS count FROM ${tableName}`).get().count;
 }
@@ -32,6 +36,59 @@ function getRetentionPolicy() {
   };
 }
 
+function getCleanupLimits() {
+  return {
+    min_days: CLEANUP_RETENTION_MIN_DAYS,
+    max_days: CLEANUP_RETENTION_MAX_DAYS,
+  };
+}
+
+function getDangerousActions() {
+  return {
+    purge_all_confirm_text: PURGE_ALL_CONFIRM_TEXT,
+  };
+}
+
+function createBadRequestError(message) {
+  const error = new Error(message);
+  error.statusCode = 400;
+  return error;
+}
+
+function readRetentionDays(value, fallback, label) {
+  if (value === undefined || value === null || value === '') {
+    return fallback;
+  }
+
+  const parsed = Number(value);
+  if (
+    !Number.isInteger(parsed) ||
+    parsed < CLEANUP_RETENTION_MIN_DAYS ||
+    parsed > CLEANUP_RETENTION_MAX_DAYS
+  ) {
+    throw createBadRequestError(
+      `${label}需为 ${CLEANUP_RETENTION_MIN_DAYS}-${CLEANUP_RETENTION_MAX_DAYS} 之间的整数天数。`
+    );
+  }
+
+  return parsed;
+}
+
+function resolveCleanupRetentionDays(options = {}) {
+  return {
+    visitorRetentionDays: readRetentionDays(
+      options.visitorRetentionDays,
+      env.visitorRetentionDays,
+      '访客数据保留天数'
+    ),
+    businessRetentionDays: readRetentionDays(
+      options.businessRetentionDays,
+      env.businessDataRetentionDays,
+      '业务数据保留天数'
+    ),
+  };
+}
+
 function buildSystemDetail() {
   const databasePing = db.prepare('SELECT 1 AS ok').get();
   const platformChecks = getPlatformConfigChecks();
@@ -52,6 +109,8 @@ function buildSystemDetail() {
       journal_mode: db.pragma('journal_mode', { simple: true }),
     },
     retention_policy: getRetentionPolicy(),
+    cleanup_limits: getCleanupLimits(),
+    dangerous_actions: getDangerousActions(),
     platforms: platformChecks,
     warnings: platformChecks
       .filter((item) => !item.configured)
@@ -59,9 +118,10 @@ function buildSystemDetail() {
   };
 }
 
-function cleanupOldDataRecords() {
-  const visitorCutoff = toCutoffIso(env.visitorRetentionDays);
-  const businessCutoff = toCutoffIso(env.businessDataRetentionDays);
+function cleanupOldDataRecords(options = {}) {
+  const retention = resolveCleanupRetentionDays(options);
+  const visitorCutoff = toCutoffIso(retention.visitorRetentionDays);
+  const businessCutoff = toCutoffIso(retention.businessRetentionDays);
 
   const countVisitorsStmt = db.prepare(
     `
@@ -143,12 +203,59 @@ function cleanupOldDataRecords() {
 
   return {
     executed_at: new Date().toISOString(),
-    retention_policy: getRetentionPolicy(),
+    retention_policy: {
+      visitors_days: retention.visitorRetentionDays,
+      business_days: retention.businessRetentionDays,
+    },
+    cleanup_limits: getCleanupLimits(),
     cutoffs: {
       visitors_before: visitorCutoff,
       business_before: businessCutoff,
     },
     deleted: cleanupTransaction(),
+  };
+}
+
+function assertPurgeAllConfirmation(body = {}) {
+  if (body?.confirm !== true) {
+    throw createBadRequestError(
+      '请在请求体中传入 {"confirm": true}，确认后再清空全部数据。'
+    );
+  }
+
+  if (String(body?.confirmText || '').trim() !== PURGE_ALL_CONFIRM_TEXT) {
+    throw createBadRequestError(
+      `清空全部数据前，请输入确认文本：${PURGE_ALL_CONFIRM_TEXT}`
+    );
+  }
+}
+
+function purgeAllDataRecords() {
+  const deleteWebhookEventsStmt = db.prepare('DELETE FROM webhook_events');
+  const deleteOrdersStmt = db.prepare('DELETE FROM orders');
+  const deleteVisitorsStmt = db.prepare('DELETE FROM visitors');
+
+  const purgeTransaction = db.transaction(() => {
+    const deleted = {
+      visitors: countTable('visitors'),
+      orders: countTable('orders'),
+      matches: countTable('matches'),
+      callbacks: countTable('callbacks'),
+      webhook_events: countTable('webhook_events'),
+    };
+
+    deleteWebhookEventsStmt.run();
+    deleteOrdersStmt.run();
+    deleteVisitorsStmt.run();
+
+    return deleted;
+  });
+
+  return {
+    executed_at: new Date().toISOString(),
+    mode: 'purge_all',
+    dangerous_actions: getDangerousActions(),
+    deleted: purgeTransaction(),
   };
 }
 
@@ -185,13 +292,48 @@ function cleanupOldData(req, res, next) {
       return;
     }
 
-    const result = cleanupOldDataRecords();
+    const retention = resolveCleanupRetentionDays({
+      visitorRetentionDays: req.body?.visitorRetentionDays,
+      businessRetentionDays: req.body?.businessRetentionDays,
+    });
+    const result = cleanupOldDataRecords(retention);
     res.json({
       ok: true,
       message: '旧数据清理完成。',
       result,
     });
   } catch (error) {
+    if (error.statusCode === 400) {
+      res.status(400).json({
+        error: 'Bad Request',
+        message: error.message,
+      });
+      return;
+    }
+
+    next(error);
+  }
+}
+
+function purgeAllData(req, res, next) {
+  try {
+    assertPurgeAllConfirmation(req.body);
+
+    const result = purgeAllDataRecords();
+    res.json({
+      ok: true,
+      message: '全部数据已清空。',
+      result,
+    });
+  } catch (error) {
+    if (error.statusCode === 400) {
+      res.status(400).json({
+        error: 'Bad Request',
+        message: error.message,
+      });
+      return;
+    }
+
     next(error);
   }
 }
@@ -222,4 +364,8 @@ module.exports = {
   getStats,
   cleanupOldData,
   cleanupOldDataRecords,
+  purgeAllData,
+  purgeAllDataRecords,
+  resolveCleanupRetentionDays,
+  assertPurgeAllConfirmation,
 };

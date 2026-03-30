@@ -34,6 +34,19 @@ function isAllowedOrigin(req, origin) {
 function createApp() {
   const app = express();
   const publicDir = path.resolve(__dirname, '../public');
+  const uiStaticOptions = {
+    etag: false,
+    lastModified: false,
+    setHeaders(res) {
+      res.setHeader(
+        'Cache-Control',
+        'no-store, no-cache, must-revalidate, proxy-revalidate'
+      );
+      res.setHeader('Pragma', 'no-cache');
+      res.setHeader('Expires', '0');
+      res.setHeader('Surrogate-Control', 'no-store');
+    },
+  };
 
   app.disable('x-powered-by');
   app.set('trust proxy', true);
@@ -73,9 +86,10 @@ function createApp() {
   app.use(express.json({ limit: '1mb' }));
   app.use('/api', apiRouter);
   app.get('/ui', (req, res) => {
+    uiStaticOptions.setHeaders(res);
     res.sendFile(path.join(publicDir, 'index.html'));
   });
-  app.use('/ui', express.static(publicDir));
+  app.use('/ui', express.static(publicDir, uiStaticOptions));
 
   app.use((req, res) => {
     res.status(404).json({ error: 'Not Found' });

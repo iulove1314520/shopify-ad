@@ -56,6 +56,11 @@ const env = {
     3600000
   ),
   cleanupRateLimitMax: toNumber(process.env.CLEANUP_RATE_LIMIT_MAX, 2),
+  purgeRateLimitWindowMs: toNumber(
+    process.env.PURGE_RATE_LIMIT_WINDOW_MS,
+    3600000
+  ),
+  purgeRateLimitMax: toNumber(process.env.PURGE_RATE_LIMIT_MAX, 1),
   defaultListLimit: toNumber(process.env.DEFAULT_LIST_LIMIT, 100),
   maxListLimit: toNumber(process.env.MAX_LIST_LIMIT, 500),
   apiAuthToken: process.env.API_AUTH_TOKEN || '',

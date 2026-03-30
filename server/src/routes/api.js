@@ -14,6 +14,7 @@ const {
   getStats,
   getSystemDetail,
   cleanupOldData,
+  purgeAllData,
 } = require('../modules/system');
 
 const router = express.Router();
@@ -32,6 +33,11 @@ const cleanupRateLimiter = createRateLimiter({
   windowMs: env.cleanupRateLimitWindowMs,
   max: env.cleanupRateLimitMax,
 });
+const purgeRateLimiter = createRateLimiter({
+  name: 'purge_all_data',
+  windowMs: env.purgeRateLimitWindowMs,
+  max: env.purgeRateLimitMax,
+});
 
 router.post('/visitor', visitorRateLimiter, handleVisitor);
 router.get('/system', requireApiAuth, getSystemDetail);
@@ -40,6 +46,12 @@ router.post(
   requireApiAuth,
   cleanupRateLimiter,
   cleanupOldData
+);
+router.post(
+  '/system/purge-all-data',
+  requireApiAuth,
+  purgeRateLimiter,
+  purgeAllData
 );
 router.get('/stats', requireApiAuth, getStats);
 router.get('/visitors', requireApiAuth, listVisitors);

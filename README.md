@@ -102,6 +102,8 @@ docker compose exec -T api npm test
 | `RETRY_RATE_LIMIT_MAX` | 手动重试接口限流窗口内允许的最大请求数 |
 | `CLEANUP_RATE_LIMIT_WINDOW_MS` | 一键清理旧数据接口的限流窗口 |
 | `CLEANUP_RATE_LIMIT_MAX` | 一键清理旧数据接口限流窗口内允许的最大请求数 |
+| `PURGE_RATE_LIMIT_WINDOW_MS` | 清空全部数据接口的限流窗口 |
+| `PURGE_RATE_LIMIT_MAX` | 清空全部数据接口限流窗口内允许的最大请求数 |
 | `DEFAULT_LIST_LIMIT` | 列表接口默认返回条数 |
 | `MAX_LIST_LIMIT` | 列表接口允许查询的最大条数 |
 | `API_AUTH_TOKEN` | 看板接口鉴权令牌 |
@@ -131,6 +133,7 @@ docker compose exec -T api npm test
 - `GET /api/stats`
 - `GET /api/system`
 - `POST /api/system/cleanup-old-data`
+- `POST /api/system/purge-all-data`
 - `GET /api/visitors`
 - `GET /api/orders`
 - `POST /api/orders/:orderId/retry-callback`
@@ -144,7 +147,10 @@ docker compose exec -T api npm test
 
 - `POST /api/orders/:orderId/retry-callback` 用于手动重试失败或已跳过的广告平台回传
 - `POST /api/system/cleanup-old-data` 用于一键清理超出保留期的旧访客、旧订单、旧匹配、旧回传和旧 Webhook 记录
+- `POST /api/system/purge-all-data` 用于清空全部访客、订单、匹配、回传和 Webhook 数据
 - 该接口需要和其他看板接口一样携带 `API_AUTH_TOKEN`
+- 该接口支持在请求体里传 `visitorRetentionDays` 和 `businessRetentionDays`，按本次选择的天数自定义清理范围
+- `POST /api/system/purge-all-data` 需要额外传入确认文本 `清空全部数据`，避免误删
 - 如果订单已经成功回传，接口会返回 `409`
 - `GET /api/system` 提供仅限已鉴权用户查看的详细系统状态，包括数据库与进程信息
 - `GET /api/system` 现在还会返回 TikTok / Facebook 的配置自检结果，WebUI 会直接显示“已就绪 / 待补齐”
@@ -173,6 +179,8 @@ http://localhost:38417/ui
 - Token 只会保存在当前浏览器的 localStorage
 - 页面现在支持在订单列表中直接手动重试失败或未完成的订单回传
 - 页面现在支持“一键清理旧数据”，只会清理超过保留期的历史记录，不会直接清空最近数据
+- 页面现在支持自定义“保留最近多少天”的清理时间选择，访客和订单日志可以分别设置
+- 页面现在把“按保留期清理”和“清空全部数据”拆成独立弹窗，不会再把顶栏布局撑乱
 - 页面支持“只看异常明细”，方便快速过滤失败订单、失败回调和失败事件
 - 页面会直接显示 TikTok / Facebook 是否已配置完整
 - 订单、回传、Webhook 列表会展示“排查编号”，方便把同一次处理链路串起来看

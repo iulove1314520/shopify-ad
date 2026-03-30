@@ -3,6 +3,7 @@ const DEFAULT_LIMIT = 20;
 
 const state = {
   showOnlyFailures: false,
+  cleanupInputsDirty: false,
   data: {
     system: null,
     stats: null,
@@ -20,7 +21,18 @@ const elements = {
   saveTokenBtn: document.getElementById('saveTokenBtn'),
   clearTokenBtn: document.getElementById('clearTokenBtn'),
   refreshBtn: document.getElementById('refreshBtn'),
+  openCleanupModalBtn: document.getElementById('openCleanupModalBtn'),
+  cleanupModal: document.getElementById('cleanupModal'),
+  cleanupModalBackdrop: document.getElementById('cleanupModalBackdrop'),
+  closeCleanupModalBtn: document.getElementById('closeCleanupModalBtn'),
   cleanupDataBtn: document.getElementById('cleanupDataBtn'),
+  visitorCleanupDaysInput: document.getElementById('visitorCleanupDaysInput'),
+  businessCleanupDaysInput: document.getElementById('businessCleanupDaysInput'),
+  resetCleanupWindowBtn: document.getElementById('resetCleanupWindowBtn'),
+  cleanupSummary: document.getElementById('cleanupSummary'),
+  purgeAllConfirmHint: document.getElementById('purgeAllConfirmHint'),
+  purgeAllConfirmInput: document.getElementById('purgeAllConfirmInput'),
+  purgeAllDataBtn: document.getElementById('purgeAllDataBtn'),
   authStatus: document.getElementById('authStatus'),
   lastUpdated: document.getElementById('lastUpdated'),
   healthPill: document.getElementById('healthPill'),
@@ -48,6 +60,7 @@ const endpointConfig = {
   health: '/health',
   system: '/api/system',
   cleanupOldData: '/api/system/cleanup-old-data',
+  purgeAllData: '/api/system/purge-all-data',
   stats: '/api/stats',
   orders: `/api/orders?limit=${DEFAULT_LIMIT}`,
   callbacks: `/api/callbacks?limit=${DEFAULT_LIMIT}`,
@@ -353,15 +366,206 @@ function renderStatusList(container, rows, emptyLabel) {
   `;
 }
 
-function getRetentionText(system) {
-  const visitorDays = Number(system?.retention_policy?.visitors_days);
-  const businessDays = Number(system?.retention_policy?.business_days);
+function getCleanupLimits(system) {
+  const minDays = Number(system?.cleanup_limits?.min_days);
+  const maxDays = Number(system?.cleanup_limits?.max_days);
 
-  if (Number.isFinite(visitorDays) && Number.isFinite(businessDays)) {
-    return `只会清理超过保留期的旧数据：访客记录按 ${visitorDays} 天，订单、匹配、回传和 Webhook 记录按 ${businessDays} 天。`;
+  return {
+    minDays: Number.isFinite(minDays) ? minDays : 1,
+    maxDays: Number.isFinite(maxDays) ? maxDays : 3650,
+  };
+}
+
+function isValidCleanupDay(value, limits) {
+  return (
+    Number.isInteger(value) &&
+    value >= limits.minDays &&
+    value <= limits.maxDays
+  );
+}
+
+function clampCleanupDay(value, fallback, limits) {
+  const parsed = Number(value);
+
+  if (!Number.isFinite(parsed)) {
+    return fallback;
   }
 
-  return '只会清理超过保留期的旧数据，不会清空最近还在排查的订单和访客。';
+  const rounded = Math.round(parsed);
+  if (rounded < limits.minDays) {
+    return fallback;
+  }
+
+  if (rounded > limits.maxDays) {
+    return limits.maxDays;
+  }
+
+  return rounded;
+}
+
+function getDefaultCleanupDays(system) {
+  const visitorDays = Number(system?.retention_policy?.visitors_days);
+  const businessDays = Number(system?.retention_policy?.business_days);
+  const limits = getCleanupLimits(system);
+
+  return {
+    visitorDays: isValidCleanupDay(visitorDays, limits) ? visitorDays : 7,
+    businessDays: isValidCleanupDay(businessDays, limits) ? businessDays : 30,
+  };
+}
+
+function getPurgeAllConfirmText(system) {
+  const value = String(system?.dangerous_actions?.purge_all_confirm_text || '').trim();
+  return value || '清空全部数据';
+}
+
+function updatePurgeAllUi(system) {
+  const confirmText = getPurgeAllConfirmText(system);
+  const inputValue = String(elements.purgeAllConfirmInput?.value || '').trim();
+
+  if (elements.purgeAllConfirmHint) {
+    elements.purgeAllConfirmHint.textContent = `确认文本：${confirmText}`;
+  }
+
+  if (elements.purgeAllDataBtn) {
+    elements.purgeAllDataBtn.disabled = inputValue !== confirmText;
+  }
+}
+
+function renderCleanupSummary(stats) {
+  if (!elements.cleanupSummary) {
+    return;
+  }
+
+  const counts = stats?.counts;
+  if (!counts) {
+    elements.cleanupSummary.textContent =
+      '登录后可查看当前访客、订单、匹配、回传和 Webhook 的数量。';
+    return;
+  }
+
+  elements.cleanupSummary.textContent =
+    `当前数据概况：访客 ${counts.visitors ?? 0} 条，订单 ${counts.orders ?? 0} 笔，` +
+    `匹配 ${counts.matches ?? 0} 条，回传 ${counts.callbacks ?? 0} 条，` +
+    `Webhook ${counts.webhook_events ?? 0} 条。`;
+}
+
+function syncCleanupInputs(system, force = false) {
+  if (!elements.visitorCleanupDaysInput || !elements.businessCleanupDaysInput) {
+    return;
+  }
+
+  const defaults = getDefaultCleanupDays(system);
+  const limits = getCleanupLimits(system);
+
+  elements.visitorCleanupDaysInput.min = String(limits.minDays);
+  elements.visitorCleanupDaysInput.max = String(limits.maxDays);
+  elements.businessCleanupDaysInput.min = String(limits.minDays);
+  elements.businessCleanupDaysInput.max = String(limits.maxDays);
+
+  if (!state.cleanupInputsDirty || force) {
+    elements.visitorCleanupDaysInput.value = String(defaults.visitorDays);
+    elements.businessCleanupDaysInput.value = String(defaults.businessDays);
+    return;
+  }
+
+  const currentVisitorDays = Number(elements.visitorCleanupDaysInput.value);
+  const currentBusinessDays = Number(elements.businessCleanupDaysInput.value);
+
+  if (!isValidCleanupDay(currentVisitorDays, limits)) {
+    elements.visitorCleanupDaysInput.value = String(defaults.visitorDays);
+  }
+
+  if (!isValidCleanupDay(currentBusinessDays, limits)) {
+    elements.businessCleanupDaysInput.value = String(defaults.businessDays);
+  }
+}
+
+function normalizeCleanupInputs(system) {
+  const defaults = getDefaultCleanupDays(system);
+  const limits = getCleanupLimits(system);
+
+  if (elements.visitorCleanupDaysInput) {
+    elements.visitorCleanupDaysInput.value = String(
+      clampCleanupDay(
+        elements.visitorCleanupDaysInput.value,
+        defaults.visitorDays,
+        limits
+      )
+    );
+  }
+
+  if (elements.businessCleanupDaysInput) {
+    elements.businessCleanupDaysInput.value = String(
+      clampCleanupDay(
+        elements.businessCleanupDaysInput.value,
+        defaults.businessDays,
+        limits
+      )
+    );
+  }
+}
+
+function readSelectedCleanupDays(system) {
+  const defaults = getDefaultCleanupDays(system);
+  const limits = getCleanupLimits(system);
+  const visitorRaw = elements.visitorCleanupDaysInput?.value?.trim();
+  const businessRaw = elements.businessCleanupDaysInput?.value?.trim();
+  const visitorDays = Number(visitorRaw || defaults.visitorDays);
+  const businessDays = Number(businessRaw || defaults.businessDays);
+
+  if (
+    !Number.isInteger(visitorDays) ||
+    visitorDays < limits.minDays ||
+    visitorDays > limits.maxDays
+  ) {
+    throw new Error(
+      `访客保留天数需填写 ${limits.minDays}-${limits.maxDays} 之间的整数。`
+    );
+  }
+
+  if (
+    !Number.isInteger(businessDays) ||
+    businessDays < limits.minDays ||
+    businessDays > limits.maxDays
+  ) {
+    throw new Error(
+      `订单和日志保留天数需填写 ${limits.minDays}-${limits.maxDays} 之间的整数。`
+    );
+  }
+
+  return {
+    visitorDays,
+    businessDays,
+  };
+}
+
+function getRetentionText(system) {
+  const defaults = getDefaultCleanupDays(system);
+  const limits = getCleanupLimits(system);
+  const hasInputs =
+    Boolean(elements.visitorCleanupDaysInput) &&
+    Boolean(elements.businessCleanupDaysInput);
+  const selected = hasInputs
+    ? {
+        visitorDays: clampCleanupDay(
+          elements.visitorCleanupDaysInput.value,
+          defaults.visitorDays,
+          limits
+        ),
+        businessDays: clampCleanupDay(
+          elements.businessCleanupDaysInput.value,
+          defaults.businessDays,
+          limits
+        ),
+      }
+    : defaults;
+  const usingDefaults =
+    selected.visitorDays === defaults.visitorDays &&
+    selected.businessDays === defaults.businessDays;
+  const prefix = usingDefaults ? '当前按系统默认清理：' : '当前按自定义时间清理：';
+
+  return `${prefix}访客记录保留最近 ${selected.visitorDays} 天，订单、匹配、回传和 Webhook 记录保留最近 ${selected.businessDays} 天。`;
 }
 
 function updateCleanupHint(system) {
@@ -370,6 +574,35 @@ function updateCleanupHint(system) {
   }
 
   elements.cleanupHint.textContent = getRetentionText(system);
+}
+
+function openCleanupModal() {
+  syncCleanupInputs(state.data.system);
+  normalizeCleanupInputs(state.data.system);
+  updateCleanupHint(state.data.system);
+  renderCleanupSummary(state.data.stats);
+
+  if (elements.purgeAllConfirmInput) {
+    elements.purgeAllConfirmInput.value = '';
+  }
+
+  updatePurgeAllUi(state.data.system);
+
+  if (elements.cleanupModal) {
+    elements.cleanupModal.hidden = false;
+  }
+}
+
+function closeCleanupModal() {
+  if (elements.cleanupModal) {
+    elements.cleanupModal.hidden = true;
+  }
+
+  if (elements.purgeAllConfirmInput) {
+    elements.purgeAllConfirmInput.value = '';
+  }
+
+  updatePurgeAllUi(state.data.system);
 }
 
 function renderPlatformStatus(system) {
@@ -510,6 +743,7 @@ function updateSystemDetail(system) {
 
   elements.healthDatabase.textContent = system?.database?.reachable ? '√' : 'X';
   elements.healthJournal.textContent = system?.database?.journal_mode || '-';
+  syncCleanupInputs(system);
   updateCleanupHint(system);
 }
 
@@ -557,6 +791,10 @@ async function requestJson(url, options = {}) {
 function bootstrapToken() {
   const token = readToken();
   elements.tokenInput.value = token;
+  syncCleanupInputs(null, true);
+  updateCleanupHint(null);
+  renderCleanupSummary(null);
+  updatePurgeAllUi(null);
 
   if (token) {
     setAuthStatus('已读取保存的认证令牌。', 'success');
@@ -570,6 +808,8 @@ function clearBusinessViews(message) {
   const fallbackMessage = message || '暂未获得访问权限。';
 
   updateCleanupHint(null);
+  renderCleanupSummary(null);
+  updatePurgeAllUi(null);
   renderMetricGrid({ counts: {}, callbacks_by_status: [] });
   renderEmpty(elements.orderStatusList, '暂无统计数据', fallbackMessage);
   renderEmpty(elements.callbackStatusList, '暂无统计数据', fallbackMessage);
@@ -671,6 +911,8 @@ function renderBusinessViews() {
     '今天暂无事件。'
   );
   updateCleanupHint(state.data.system);
+  renderCleanupSummary(stats);
+  updatePurgeAllUi(state.data.system);
   renderPlatformStatus(state.data.system);
 
   renderTable(
@@ -1052,21 +1294,27 @@ async function handleRetryOrder(orderId, button) {
 
 function summarizeCleanupResult(result) {
   const deleted = result?.deleted || {};
+  const isPurgeAll = String(result?.mode || '') === 'purge_all';
   const summaryItems = [
-    ['旧访客', deleted.visitors || 0, '条'],
-    ['旧订单', deleted.orders || 0, '笔'],
-    ['旧匹配', deleted.matches || 0, '条'],
-    ['旧回传', deleted.callbacks || 0, '条'],
-    ['旧 Webhook 记录', deleted.webhook_events || 0, '条'],
+    [isPurgeAll ? '访客' : '旧访客', deleted.visitors || 0, '条'],
+    [isPurgeAll ? '订单' : '旧订单', deleted.orders || 0, '笔'],
+    [isPurgeAll ? '匹配' : '旧匹配', deleted.matches || 0, '条'],
+    [isPurgeAll ? '回传' : '旧回传', deleted.callbacks || 0, '条'],
+    [isPurgeAll ? 'Webhook 记录' : '旧 Webhook 记录', deleted.webhook_events || 0, '条'],
   ];
   const total = summaryItems.reduce((sum, [, count]) => sum + Number(count || 0), 0);
+  const actionLabel = isPurgeAll ? '全部数据已清空：' : '旧数据清理完成：';
+  const emptyLabel = isPurgeAll
+    ? '数据库已经是空的，无需再次清空。'
+    : '没有发现超出保留期的旧数据，本次无需清理。';
 
   return {
     total,
+    tone: 'success',
     text:
       total === 0
-        ? '没有发现超出保留期的旧数据，本次无需清理。'
-        : `旧数据清理完成：${summaryItems
+        ? emptyLabel
+        : `${actionLabel}${summaryItems
             .filter(([, count]) => Number(count || 0) > 0)
             .map(([label, count, unit]) => `${label} ${count} ${unit}`)
             .join('，')}。`,
@@ -1080,8 +1328,17 @@ async function handleCleanupOldData(button) {
     return;
   }
 
+  let cleanupDays;
+  try {
+    cleanupDays = readSelectedCleanupDays(state.data.system);
+  } catch (error) {
+    setAuthStatus(error.message, 'danger');
+    return;
+  }
+
   const confirmText =
-    `确认清理旧数据吗？\n\n${getRetentionText(state.data.system)}\n\n` +
+    `确认清理旧数据吗？\n\n` +
+    `本次将保留最近 ${cleanupDays.visitorDays} 天访客数据，以及最近 ${cleanupDays.businessDays} 天订单和日志数据。\n\n` +
     '这一步会永久删除超出保留期的历史数据，不能撤销。';
 
   if (!window.confirm(confirmText)) {
@@ -1098,17 +1355,81 @@ async function handleCleanupOldData(button) {
     const payload = await requestJson(endpointConfig.cleanupOldData, {
       token,
       method: 'POST',
-      body: { confirm: true },
+      body: {
+        confirm: true,
+        visitorRetentionDays: cleanupDays.visitorDays,
+        businessRetentionDays: cleanupDays.businessDays,
+      },
     });
     const summary = summarizeCleanupResult(payload?.result);
 
     await refreshDashboard();
-    setAuthStatus(summary.text, summary.total > 0 ? 'success' : 'warning');
+    closeCleanupModal();
+    setAuthStatus(summary.text, summary.tone);
   } catch (error) {
     setAuthStatus(`清理旧数据失败：${error.message}`, 'danger');
   } finally {
     button.disabled = false;
     button.textContent = originalText;
+  }
+}
+
+async function handlePurgeAllData(button) {
+  const token = elements.tokenInput.value.trim();
+  if (!token) {
+    setAuthStatus('请先输入有效令牌，再执行清空全部数据。', 'warning');
+    return;
+  }
+
+  const confirmText = getPurgeAllConfirmText(state.data.system);
+  const typedText = String(elements.purgeAllConfirmInput?.value || '').trim();
+  if (typedText !== confirmText) {
+    setAuthStatus(`请输入正确确认文本后再执行：${confirmText}`, 'warning');
+    return;
+  }
+
+  const confirmMessage =
+    '这是高风险操作。\n\n' +
+    '执行后会清空全部访客、订单、匹配、回传和 Webhook 记录，且不能恢复。\n\n' +
+    '如果你确认要继续，请点击“确定”。';
+  if (!window.confirm(confirmMessage)) {
+    setAuthStatus('已取消清空全部数据。', 'warning');
+    return;
+  }
+
+  const originalText = button.textContent;
+  button.disabled = true;
+  button.textContent = '清空中...';
+  setAuthStatus('正在清空全部数据，请稍候...', 'warning');
+
+  try {
+    const payload = await requestJson(endpointConfig.purgeAllData, {
+      token,
+      method: 'POST',
+      body: {
+        confirm: true,
+        confirmText,
+      },
+    });
+    const summary = summarizeCleanupResult(payload?.result);
+
+    state.cleanupInputsDirty = false;
+    if (elements.purgeAllConfirmInput) {
+      elements.purgeAllConfirmInput.value = '';
+    }
+
+    await refreshDashboard();
+    closeCleanupModal();
+    setAuthStatus(
+      summary.total === 0 ? '数据库已经是空的，无需再次清空。' : summary.text,
+      'success'
+    );
+  } catch (error) {
+    setAuthStatus(`清空全部数据失败：${error.message}`, 'danger');
+  } finally {
+    button.disabled = false;
+    button.textContent = originalText;
+    updatePurgeAllUi(state.data.system);
   }
 }
 
@@ -1138,9 +1459,76 @@ function bindEvents() {
   });
 
   elements.refreshBtn.addEventListener('click', refreshDashboard);
+  if (elements.openCleanupModalBtn) {
+    elements.openCleanupModalBtn.addEventListener('click', openCleanupModal);
+  }
+  if (elements.closeCleanupModalBtn) {
+    elements.closeCleanupModalBtn.addEventListener('click', closeCleanupModal);
+  }
+  if (elements.cleanupModalBackdrop) {
+    elements.cleanupModalBackdrop.addEventListener('click', closeCleanupModal);
+  }
   if (elements.cleanupDataBtn) {
     elements.cleanupDataBtn.addEventListener('click', () =>
       handleCleanupOldData(elements.cleanupDataBtn)
+    );
+  }
+  if (elements.visitorCleanupDaysInput) {
+    elements.visitorCleanupDaysInput.addEventListener('input', () => {
+      state.cleanupInputsDirty = true;
+      updateCleanupHint(state.data.system);
+    });
+    elements.visitorCleanupDaysInput.addEventListener('blur', () => {
+      normalizeCleanupInputs(state.data.system);
+      updateCleanupHint(state.data.system);
+    });
+    elements.visitorCleanupDaysInput.addEventListener(
+      'wheel',
+      (event) => {
+        if (document.activeElement === elements.visitorCleanupDaysInput) {
+          event.preventDefault();
+          elements.visitorCleanupDaysInput.blur();
+        }
+      },
+      { passive: false }
+    );
+  }
+  if (elements.businessCleanupDaysInput) {
+    elements.businessCleanupDaysInput.addEventListener('input', () => {
+      state.cleanupInputsDirty = true;
+      updateCleanupHint(state.data.system);
+    });
+    elements.businessCleanupDaysInput.addEventListener('blur', () => {
+      normalizeCleanupInputs(state.data.system);
+      updateCleanupHint(state.data.system);
+    });
+    elements.businessCleanupDaysInput.addEventListener(
+      'wheel',
+      (event) => {
+        if (document.activeElement === elements.businessCleanupDaysInput) {
+          event.preventDefault();
+          elements.businessCleanupDaysInput.blur();
+        }
+      },
+      { passive: false }
+    );
+  }
+  if (elements.resetCleanupWindowBtn) {
+    elements.resetCleanupWindowBtn.addEventListener('click', () => {
+      state.cleanupInputsDirty = false;
+      syncCleanupInputs(state.data.system, true);
+      updateCleanupHint(state.data.system);
+      setAuthStatus('已恢复默认清理天数。', 'success');
+    });
+  }
+  if (elements.purgeAllConfirmInput) {
+    elements.purgeAllConfirmInput.addEventListener('input', () => {
+      updatePurgeAllUi(state.data.system);
+    });
+  }
+  if (elements.purgeAllDataBtn) {
+    elements.purgeAllDataBtn.addEventListener('click', () =>
+      handlePurgeAllData(elements.purgeAllDataBtn)
     );
   }
 
@@ -1162,52 +1550,55 @@ function bindEvents() {
 
   const navItems = document.querySelectorAll('.nav-item');
   const scrollCanvas = elements.scrollCanvas;
-  if (navItems.length > 0 && scrollCanvas) {
-    navItems.forEach((item) => {
-      item.addEventListener('click', (event) => {
-        event.preventDefault();
-        navItems.forEach((navItem) => navItem.classList.remove('active'));
-        item.classList.add('active');
 
-        const targetId = item.getAttribute('href').slice(1);
-        const targetElement = document.getElementById(targetId);
-        if (!targetElement) {
-          return;
-        }
+  function handleRoute() {
+    let hash = window.location.hash || '#overview';
+    let targetId = `view-${hash.slice(1)}`;
+    let targetElement = document.getElementById(targetId);
 
-        scrollCanvas.scrollTo({
-          top: targetElement.offsetTop - scrollCanvas.offsetTop - 20,
-          behavior: 'smooth',
-        });
-      });
+    if (!targetElement) {
+      hash = '#overview';
+      targetId = 'view-overview';
+      targetElement = document.getElementById(targetId);
+    }
+
+    navItems.forEach((navItem) => {
+      navItem.classList.toggle('active', navItem.getAttribute('href') === hash);
     });
 
-    const sections = Array.from(document.querySelectorAll('.section-title[id]'));
-    if (sections.length > 0) {
-      const observer = new IntersectionObserver(
-        (entries) => {
-          entries.forEach((entry) => {
-            if (!entry.isIntersecting) {
-              return;
-            }
+    document.querySelectorAll('.page-view').forEach((view) => {
+      view.classList.remove('active');
+    });
 
-            navItems.forEach((navItem) => {
-              navItem.classList.toggle(
-                'active',
-                navItem.getAttribute('href') === `#${entry.target.id}`
-              );
-            });
-          });
-        },
-        {
-          root: scrollCanvas,
-          threshold: 0.5,
-        }
-      );
+    if (targetElement) {
+      targetElement.classList.add('active');
+    }
 
-      sections.forEach((section) => observer.observe(section));
+    if (scrollCanvas) {
+      scrollCanvas.scrollTop = 0;
     }
   }
+
+  navItems.forEach((navItem) => {
+    navItem.addEventListener('click', (e) => {
+      e.preventDefault();
+      const targetHash = navItem.getAttribute('href');
+      if (targetHash) {
+        window.location.hash = targetHash;
+        handleRoute();
+      }
+    });
+  });
+
+  window.addEventListener('hashchange', handleRoute);
+
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && elements.cleanupModal && !elements.cleanupModal.hidden) {
+      closeCleanupModal();
+    }
+  });
+
+  setTimeout(handleRoute, 0);
 }
 
 bootstrapToken();

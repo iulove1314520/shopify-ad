@@ -7,8 +7,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@500;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/ui/styles.css" />
-  <script src="/ui/app.js" defer></script>
+  <link rel="stylesheet" href="/ui/styles.css?v=20260330-2109" />
+  <script src="/ui/app.js?v=20260330-2109" defer></script>
 </head>
 <body class="aurora-theme">
   <!-- CSS Background Blur Orbs -->
@@ -96,116 +96,126 @@
             </div>
             <div class="topbar-actions">
               <button id="refreshBtn" class="btn btn-glow"><span class="icon">🔄</span> 刷新数据</button>
-              <button id="cleanupDataBtn" class="btn btn-danger-soft"><span class="icon">🧹</span> 清理旧数据</button>
+              <button id="openCleanupModalBtn" class="btn btn-danger-soft" type="button"><span class="icon">🧹</span> 数据清理</button>
             </div>
           </div>
-          <p id="cleanupHint" class="health-note">
-            只会清理超过保留期的旧数据，不会清空最近还在排查的订单和访客。
-          </p>
           <!-- Hidden compatibility elements to not break app.js -->
           <span id="healthDatabase" style="display:none;"></span>
           <span id="healthJournal" style="display:none;"></span>
         </div>
       </header>
 
-      <div class="scroll-canvas">
+      <div class="scroll-canvas" id="scrollCanvas">
         
-        <!-- Core Metrics (Referred to as metricGrid in JS) -->
-        <div class="section-title" id="overview">
-          <h2>核心业务数据</h2>
-          <p>今天最重要的统计数字，快速判断整体业务是否健康。</p>
-        </div>
-        <section id="metricGrid" class="metrics-grid">
-          <!-- Populated dynamically via app.js -->
-          <div class="metric-card skeleton glass-panel"></div>
-          <div class="metric-card skeleton glass-panel"></div>
-          <div class="metric-card skeleton glass-panel"></div>
-          <div class="metric-card skeleton glass-panel"></div>
-          <div class="metric-card skeleton glass-panel"></div>
-        </section>
-
-        <!-- Insights Summary -->
-        <div class="section-title">
-          <h2>成功与失败概览</h2>
-          <p>快速查看目前有没有大量失败或未处理的订单与回调。</p>
-        </div>
-        <section class="insights-grid">
-          <div class="insight-panel glass-panel">
-            <div class="panel-header">
-              <span class="icon">🛍️</span> <h3>订单处理情况</h3>
-            </div>
-            <div class="status-list" id="orderStatusList"></div>
+        <!-- Overview Module -->
+        <div class="page-view active" id="view-overview">
+          <div class="page-header">
+            <h2>📊 首页概览</h2>
+            <p>今天最重要的统计数字与系统整体情况，快速判断业务是否健康。</p>
           </div>
-          <div class="insight-panel glass-panel">
-            <div class="panel-header">
-              <span class="icon">📡</span> <h3>回调发送情况</h3>
-            </div>
-            <div class="status-list" id="callbackStatusList"></div>
+          <section id="metricGrid" class="metrics-grid">
+            <!-- Populated dynamically via app.js -->
+            <div class="metric-card skeleton glass-panel"></div>
+            <div class="metric-card skeleton glass-panel"></div>
+            <div class="metric-card skeleton glass-panel"></div>
+            <div class="metric-card skeleton glass-panel"></div>
+            <div class="metric-card skeleton glass-panel"></div>
+          </section>
+
+          <div class="section-title">
+            <h2>成功与失败概览</h2>
+            <p>快速查看目前有没有大量失败或未处理的订单与回调。</p>
           </div>
-          <div class="insight-panel glass-panel">
-            <div class="panel-header">
-              <span class="icon">⚡</span> <h3>Webhook 接收情况</h3>
+          <section class="insights-grid">
+            <div class="insight-panel glass-panel">
+              <div class="panel-header">
+                <span class="icon">🛍️</span> <h3>订单处理情况</h3>
+              </div>
+              <div class="status-list" id="orderStatusList"></div>
             </div>
-            <div class="status-list" id="eventStatusList"></div>
+            <div class="insight-panel glass-panel">
+              <div class="panel-header">
+                <span class="icon">📡</span> <h3>回调发送情况</h3>
+              </div>
+              <div class="status-list" id="callbackStatusList"></div>
+            </div>
+            <div class="insight-panel glass-panel">
+              <div class="panel-header">
+                <span class="icon">⚡</span> <h3>Webhook 接收情况</h3>
+              </div>
+              <div class="status-list" id="eventStatusList"></div>
+            </div>
+            <div class="insight-panel glass-panel">
+              <div class="panel-header">
+                <span class="icon">🧩</span> <h3>平台配置状态</h3>
+              </div>
+              <div class="status-list" id="platformStatusList"></div>
+            </div>
+          </section>
+        </div>
+
+        <!-- Orders Module -->
+        <div class="page-view" id="view-orders">
+          <div class="page-header">
+            <div class="page-header-row">
+              <div class="page-header-left">
+                <h2>🛍️ 订单记录</h2>
+                <p>查看最近订单的处理结果和失败原因，直接定位问题或发起重试。</p>
+              </div>
+              <div class="section-tools">
+                <button id="failedFilterBtn" class="btn btn-ghost btn-sm" type="button">只看异常明细</button>
+                <span id="filterStatusText" class="table-tool-hint">当前显示全部订单、回调和事件记录。</span>
+              </div>
+            </div>
           </div>
-          <div class="insight-panel glass-panel">
-            <div class="panel-header">
-              <span class="icon">🧩</span> <h3>平台配置状态</h3>
-            </div>
-            <div class="status-list" id="platformStatusList"></div>
+          <section class="table-section glass-panel">
+            <div class="table-wrapper" id="ordersTable"></div>
+          </section>
+        </div>
+
+        <!-- Callbacks Module -->
+        <div class="page-view" id="view-callbacks">
+          <div class="page-header">
+            <h2>📡 广告回传</h2>
+            <p>查看系统向 TikTok 和 Facebook 等平台发送广告回调的详细历史与状态。</p>
           </div>
-        </section>
+          <section class="table-section glass-panel">
+            <div class="table-wrapper" id="callbacksTable"></div>
+          </section>
+        </div>
 
-        <div class="section-divider"></div>
-
-        <!-- Detailed Tables Area -->
-        <div class="section-title" id="orders">
-          <div class="section-title-row">
-            <div>
-              <h2>最近订单列表</h2>
-              <p>查看最近订单的处理结果和失败原因，也可以直接发起手动重试。</p>
-            </div>
-            <div class="section-tools">
-              <button id="failedFilterBtn" class="btn btn-ghost btn-sm" type="button">只看异常明细</button>
-              <span id="filterStatusText" class="table-tool-hint">当前显示全部订单、回调和事件记录。</span>
-            </div>
+        <!-- Matches Module -->
+        <div class="page-view" id="view-matches">
+          <div class="page-header">
+            <h2>🎯 匹配记录</h2>
+            <p>查看每一次订单转化与广告访客点击参数的详细匹配痕迹与命中信号。</p>
           </div>
+          <section class="table-section glass-panel">
+            <div class="table-wrapper" id="matchesTable"></div>
+          </section>
         </div>
-        <section class="table-section glass-panel">
-          <div class="table-wrapper" id="ordersTable"></div>
-        </section>
 
-        <div class="section-title" id="callbacks">
-          <h2>回调结果列表</h2>
-          <p>查看系统发给 TikTok 和 Facebook 的广告回调是否成功。</p>
+        <!-- Events Module -->
+        <div class="page-view" id="view-events">
+          <div class="page-header">
+            <h2>⚡ Webhook 接收</h2>
+            <p>监控从 Shopify 等电商平台接收到的所有实时事件推送及解析情况。</p>
+          </div>
+          <section class="table-section glass-panel">
+            <div class="table-wrapper" id="eventsTable"></div>
+          </section>
         </div>
-        <section class="table-section glass-panel">
-          <div class="table-wrapper" id="callbacksTable"></div>
-        </section>
 
-        <div class="section-title" id="matches">
-          <h2>订单匹配结果</h2>
-          <p>查看订单是否成功匹配到了广告点击记录。</p>
+        <!-- Visitors Module -->
+        <div class="page-view" id="view-visitors">
+          <div class="page-header">
+            <h2>🐾 访客记录</h2>
+            <p>查看最新通过广告链接访问店铺的访客行为与点击参数（ttclid, fbclid 等）。</p>
+          </div>
+          <section class="table-section glass-panel">
+            <div class="table-wrapper" id="visitorsTable"></div>
+          </section>
         </div>
-        <section class="table-section glass-panel">
-          <div class="table-wrapper" id="matchesTable"></div>
-        </section>
-
-        <div class="section-title" id="events">
-          <h2>Webhook 接收记录</h2>
-          <p>查看 Shopify 推过来的事件有没有被系统收到并处理。</p>
-        </div>
-        <section class="table-section glass-panel">
-          <div class="table-wrapper" id="eventsTable"></div>
-        </section>
-
-        <div class="section-title" id="visitors">
-          <h2>广告访客记录</h2>
-          <p>查看广告带来的访客信息（包含 ttclid、fbclid 等点击参数）。</p>
-        </div>
-        <section class="table-section glass-panel">
-          <div class="table-wrapper" id="visitorsTable"></div>
-        </section>
 
         <!-- Bottom Padding -->
         <div class="footer-spacer">
@@ -213,6 +223,80 @@
         </div>
       </div>
     </main>
+  </div>
+
+  <div id="cleanupModal" class="modal-shell" hidden>
+    <div id="cleanupModalBackdrop" class="modal-backdrop" data-action="close-cleanup-modal"></div>
+    <section class="modal-panel glass-panel" role="dialog" aria-modal="true" aria-labelledby="cleanupModalTitle">
+      <div class="modal-header">
+        <div>
+          <h2 id="cleanupModalTitle">数据清理</h2>
+          <p class="modal-subtitle">把日常清理和高风险清空拆开处理，避免误删和布局跳动。</p>
+        </div>
+        <button id="closeCleanupModalBtn" class="btn btn-ghost btn-inline modal-close-btn" type="button">关闭</button>
+      </div>
+
+      <div id="cleanupSummary" class="cleanup-summary">
+        登录后可查看当前访客、订单、匹配、回传和 Webhook 的数量。
+      </div>
+
+      <div class="cleanup-modal-grid">
+        <section class="cleanup-card">
+          <div class="cleanup-card-head">
+            <h3>按保留期清理</h3>
+            <p id="cleanupHint" class="health-note">
+              只会清理超过保留期的旧数据，不会清空最近还在排查的订单和访客。
+            </p>
+          </div>
+
+          <div class="cleanup-controls cleanup-controls-stack">
+            <div class="cleanup-field">
+              <label for="visitorCleanupDaysInput">访客保留最近</label>
+              <div class="cleanup-input-group">
+                <input id="visitorCleanupDaysInput" type="number" min="1" max="3650" step="1" inputmode="numeric" />
+                <span>天</span>
+              </div>
+              <small>会删除更早的广告访客记录</small>
+            </div>
+            <div class="cleanup-field">
+              <label for="businessCleanupDaysInput">订单和日志保留最近</label>
+              <div class="cleanup-input-group">
+                <input id="businessCleanupDaysInput" type="number" min="1" max="3650" step="1" inputmode="numeric" />
+                <span>天</span>
+              </div>
+              <small>会删除更早的订单、匹配、回传和 Webhook 记录</small>
+            </div>
+          </div>
+
+          <div class="cleanup-card-actions">
+            <button id="resetCleanupWindowBtn" class="btn btn-ghost btn-inline" type="button">恢复默认</button>
+            <button id="cleanupDataBtn" class="btn btn-danger-soft" type="button">执行旧数据清理</button>
+          </div>
+        </section>
+
+        <section class="cleanup-card cleanup-card-danger">
+          <div class="cleanup-card-head">
+            <h3>清空全部数据</h3>
+            <p class="health-note cleanup-danger-note">
+              这是高风险操作，会清空全部访客、订单、匹配、回传和 Webhook 记录，只适合重置测试环境或你明确要从头开始时使用。
+            </p>
+          </div>
+
+          <div class="cleanup-danger-box">
+            <label for="purgeAllConfirmInput">请输入确认文本后才能执行</label>
+            <p id="purgeAllConfirmHint" class="cleanup-confirm-text">确认文本：清空全部数据</p>
+            <div class="cleanup-input-group cleanup-input-group-wide">
+              <input id="purgeAllConfirmInput" type="text" autocomplete="off" spellcheck="false" placeholder="请输入上面的确认文本" />
+            </div>
+            <small>只有完全输入正确后，按钮才会解锁。</small>
+          </div>
+
+          <div class="cleanup-card-actions cleanup-card-actions-danger">
+            <button id="purgeAllDataBtn" class="btn btn-danger-hard btn-inline" type="button" disabled>清空全部数据</button>
+          </div>
+        </section>
+      </div>
+    </section>
   </div>
 </body>
 </html>
