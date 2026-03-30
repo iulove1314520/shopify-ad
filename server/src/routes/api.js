@@ -10,7 +10,11 @@ const {
   listWebhookEvents,
   retryOrderCallback,
 } = require('../modules/order');
-const { getStats, getSystemDetail } = require('../modules/system');
+const {
+  getStats,
+  getSystemDetail,
+  cleanupOldData,
+} = require('../modules/system');
 
 const router = express.Router();
 const visitorRateLimiter = createRateLimiter({
@@ -23,9 +27,20 @@ const retryRateLimiter = createRateLimiter({
   windowMs: env.retryRateLimitWindowMs,
   max: env.retryRateLimitMax,
 });
+const cleanupRateLimiter = createRateLimiter({
+  name: 'cleanup_old_data',
+  windowMs: env.cleanupRateLimitWindowMs,
+  max: env.cleanupRateLimitMax,
+});
 
 router.post('/visitor', visitorRateLimiter, handleVisitor);
 router.get('/system', requireApiAuth, getSystemDetail);
+router.post(
+  '/system/cleanup-old-data',
+  requireApiAuth,
+  cleanupRateLimiter,
+  cleanupOldData
+);
 router.get('/stats', requireApiAuth, getStats);
 router.get('/visitors', requireApiAuth, listVisitors);
 router.get('/orders', requireApiAuth, listOrders);

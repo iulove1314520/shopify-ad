@@ -184,6 +184,19 @@ body.aurora-theme {
 .btn-ghost { background: rgba(255,255,255,0.05); color: var(--text-main); }
 .btn-ghost:hover { background: rgba(255,255,255,0.1); }
 .btn-ghost.is-active { background: rgba(0, 240, 255, 0.12); color: var(--glow-cyan); border: 1px solid rgba(0, 240, 255, 0.25); }
+.btn-danger-soft {
+  padding: 10px 18px;
+  background: rgba(255, 71, 87, 0.12);
+  border: 1px solid rgba(255, 71, 87, 0.28);
+  color: #ffd5d9;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.btn-danger-soft:hover {
+  background: rgba(255, 71, 87, 0.18);
+  box-shadow: 0 0 18px rgba(255, 71, 87, 0.16);
+}
 .btn-inline { padding: 8px 12px; font-size: 0.8rem; white-space: nowrap; }
 .btn[disabled] { opacity: 0.55; cursor: not-allowed; box-shadow: none; }
 
@@ -206,6 +219,8 @@ body.aurora-theme {
 .health-meta { display: flex; justify-content: space-between; align-items: center; font-size: 0.8rem; color: var(--text-dark); }
 .env-chip { background: rgba(0,0,0,0.4); padding: 4px 8px; border-radius: 6px; color: var(--text-dim); border: 1px solid rgba(255,255,255,0.05); }
 .health-core { display: flex; align-items: center; gap: 16px; }
+.topbar-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.health-note { color: var(--text-dim); font-size: 0.82rem; line-height: 1.5; max-width: 460px; }
 .health-pill { display: flex; align-items: center; gap: 8px; font-family: var(--font-mono); font-size: 0.9rem; font-weight: 600; padding: 8px 14px; border-radius: 10px; background: rgba(0,0,0,0.3); border: 1px solid; }
 
 .health-pill.pulse-warning { color: var(--warning); border-color: rgba(251, 192, 45, 0.3); box-shadow: 0 0 20px rgba(251,192,45, 0.1); }
@@ -347,6 +362,9 @@ tbody td { padding: 16px 24px; font-size: 0.9rem; vertical-align: top; line-heig
   .btn-group-row { margin-bottom: 8px; }
   .scroll-canvas { padding: 0 16px 40px; }
   .topbar { padding: 24px 16px 16px; flex-direction: column; align-items: stretch; gap: 16px; }
+  .health-core { flex-direction: column; align-items: stretch; }
+  .topbar-actions { width: 100%; }
+  .topbar-actions .btn { justify-content: center; flex: 1 1 180px; }
   .section-title-row { flex-direction: column; align-items: stretch; }
   .section-tools { justify-content: flex-start; }
   .table-tool-hint { text-align: left; max-width: none; }

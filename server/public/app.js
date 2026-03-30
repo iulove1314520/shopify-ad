@@ -20,11 +20,13 @@ const elements = {
   saveTokenBtn: document.getElementById('saveTokenBtn'),
   clearTokenBtn: document.getElementById('clearTokenBtn'),
   refreshBtn: document.getElementById('refreshBtn'),
+  cleanupDataBtn: document.getElementById('cleanupDataBtn'),
   authStatus: document.getElementById('authStatus'),
   lastUpdated: document.getElementById('lastUpdated'),
   healthPill: document.getElementById('healthPill'),
   healthStatusText: document.getElementById('healthStatusText'),
   healthEnvironment: document.getElementById('healthEnvironment'),
+  cleanupHint: document.getElementById('cleanupHint'),
   healthDatabase: document.getElementById('healthDatabase'),
   healthJournal: document.getElementById('healthJournal'),
   metricGrid: document.getElementById('metricGrid'),
@@ -45,6 +47,7 @@ const elements = {
 const endpointConfig = {
   health: '/health',
   system: '/api/system',
+  cleanupOldData: '/api/system/cleanup-old-data',
   stats: '/api/stats',
   orders: `/api/orders?limit=${DEFAULT_LIMIT}`,
   callbacks: `/api/callbacks?limit=${DEFAULT_LIMIT}`,
@@ -350,6 +353,25 @@ function renderStatusList(container, rows, emptyLabel) {
   `;
 }
 
+function getRetentionText(system) {
+  const visitorDays = Number(system?.retention_policy?.visitors_days);
+  const businessDays = Number(system?.retention_policy?.business_days);
+
+  if (Number.isFinite(visitorDays) && Number.isFinite(businessDays)) {
+    return `只会清理超过保留期的旧数据：访客记录按 ${visitorDays} 天，订单、匹配、回传和 Webhook 记录按 ${businessDays} 天。`;
+  }
+
+  return '只会清理超过保留期的旧数据，不会清空最近还在排查的订单和访客。';
+}
+
+function updateCleanupHint(system) {
+  if (!elements.cleanupHint) {
+    return;
+  }
+
+  elements.cleanupHint.textContent = getRetentionText(system);
+}
+
 function renderPlatformStatus(system) {
   const platforms = Array.isArray(system?.platforms) ? system.platforms : [];
 
@@ -488,6 +510,7 @@ function updateSystemDetail(system) {
 
   elements.healthDatabase.textContent = system?.database?.reachable ? '√' : 'X';
   elements.healthJournal.textContent = system?.database?.journal_mode || '-';
+  updateCleanupHint(system);
 }
 
 async function requestJson(url, options = {}) {
@@ -546,6 +569,7 @@ function bootstrapToken() {
 function clearBusinessViews(message) {
   const fallbackMessage = message || '暂未获得访问权限。';
 
+  updateCleanupHint(null);
   renderMetricGrid({ counts: {}, callbacks_by_status: [] });
   renderEmpty(elements.orderStatusList, '暂无统计数据', fallbackMessage);
   renderEmpty(elements.callbackStatusList, '暂无统计数据', fallbackMessage);
@@ -646,6 +670,7 @@ function renderBusinessViews() {
     stats.webhook_events_by_status,
     '今天暂无事件。'
   );
+  updateCleanupHint(state.data.system);
   renderPlatformStatus(state.data.system);
 
   renderTable(
@@ -1025,6 +1050,68 @@ async function handleRetryOrder(orderId, button) {
   }
 }
 
+function summarizeCleanupResult(result) {
+  const deleted = result?.deleted || {};
+  const summaryItems = [
+    ['旧访客', deleted.visitors || 0, '条'],
+    ['旧订单', deleted.orders || 0, '笔'],
+    ['旧匹配', deleted.matches || 0, '条'],
+    ['旧回传', deleted.callbacks || 0, '条'],
+    ['旧 Webhook 记录', deleted.webhook_events || 0, '条'],
+  ];
+  const total = summaryItems.reduce((sum, [, count]) => sum + Number(count || 0), 0);
+
+  return {
+    total,
+    text:
+      total === 0
+        ? '没有发现超出保留期的旧数据，本次无需清理。'
+        : `旧数据清理完成：${summaryItems
+            .filter(([, count]) => Number(count || 0) > 0)
+            .map(([label, count, unit]) => `${label} ${count} ${unit}`)
+            .join('，')}。`,
+  };
+}
+
+async function handleCleanupOldData(button) {
+  const token = elements.tokenInput.value.trim();
+  if (!token) {
+    setAuthStatus('请先输入有效令牌，再执行旧数据清理。', 'warning');
+    return;
+  }
+
+  const confirmText =
+    `确认清理旧数据吗？\n\n${getRetentionText(state.data.system)}\n\n` +
+    '这一步会永久删除超出保留期的历史数据，不能撤销。';
+
+  if (!window.confirm(confirmText)) {
+    setAuthStatus('已取消旧数据清理。', 'warning');
+    return;
+  }
+
+  const originalText = button.textContent;
+  button.disabled = true;
+  button.textContent = '清理中...';
+  setAuthStatus('正在清理旧数据，请稍候...', 'warning');
+
+  try {
+    const payload = await requestJson(endpointConfig.cleanupOldData, {
+      token,
+      method: 'POST',
+      body: { confirm: true },
+    });
+    const summary = summarizeCleanupResult(payload?.result);
+
+    await refreshDashboard();
+    setAuthStatus(summary.text, summary.total > 0 ? 'success' : 'warning');
+  } catch (error) {
+    setAuthStatus(`清理旧数据失败：${error.message}`, 'danger');
+  } finally {
+    button.disabled = false;
+    button.textContent = originalText;
+  }
+}
+
 function bindEvents() {
   elements.saveTokenBtn.addEventListener('click', () => {
     const token = elements.tokenInput.value.trim();
@@ -1051,6 +1138,11 @@ function bindEvents() {
   });
 
   elements.refreshBtn.addEventListener('click', refreshDashboard);
+  if (elements.cleanupDataBtn) {
+    elements.cleanupDataBtn.addEventListener('click', () =>
+      handleCleanupOldData(elements.cleanupDataBtn)
+    );
+  }
 
   if (elements.failedFilterBtn) {
     elements.failedFilterBtn.addEventListener('click', () => {

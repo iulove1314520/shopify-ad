@@ -94,8 +94,14 @@
               <span class="status-ring"></span>
               <span id="healthStatusText">连接中...</span>
             </div>
-            <button id="refreshBtn" class="btn btn-glow"><span class="icon">🔄</span> 刷新数据</button>
+            <div class="topbar-actions">
+              <button id="refreshBtn" class="btn btn-glow"><span class="icon">🔄</span> 刷新数据</button>
+              <button id="cleanupDataBtn" class="btn btn-danger-soft"><span class="icon">🧹</span> 清理旧数据</button>
+            </div>
           </div>
+          <p id="cleanupHint" class="health-note">
+            只会清理超过保留期的旧数据，不会清空最近还在排查的订单和访客。
+          </p>
           <!-- Hidden compatibility elements to not break app.js -->
           <span id="healthDatabase" style="display:none;"></span>
           <span id="healthJournal" style="display:none;"></span>

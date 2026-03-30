@@ -28,6 +28,10 @@ const env = {
     process.env.SQLITE_PATH || path.resolve(__dirname, '../../../data/app.db'),
   sqliteBusyTimeoutMs: toNumber(process.env.SQLITE_BUSY_TIMEOUT_MS, 5000),
   visitorRetentionDays: toNumber(process.env.VISITOR_RETENTION_DAYS, 7),
+  businessDataRetentionDays: toNumber(
+    process.env.BUSINESS_DATA_RETENTION_DAYS,
+    30
+  ),
   matchWindowDays: toNumber(process.env.MATCH_WINDOW_DAYS, 3),
   requestTimeoutMs: toNumber(process.env.REQUEST_TIMEOUT_MS, 10000),
   callbackMaxAttempts: toNumber(process.env.CALLBACK_MAX_ATTEMPTS, 2),
@@ -47,6 +51,11 @@ const env = {
     60000
   ),
   retryRateLimitMax: toNumber(process.env.RETRY_RATE_LIMIT_MAX, 10),
+  cleanupRateLimitWindowMs: toNumber(
+    process.env.CLEANUP_RATE_LIMIT_WINDOW_MS,
+    3600000
+  ),
+  cleanupRateLimitMax: toNumber(process.env.CLEANUP_RATE_LIMIT_MAX, 2),
   defaultListLimit: toNumber(process.env.DEFAULT_LIST_LIMIT, 100),
   maxListLimit: toNumber(process.env.MAX_LIST_LIMIT, 500),
   apiAuthToken: process.env.API_AUTH_TOKEN || '',

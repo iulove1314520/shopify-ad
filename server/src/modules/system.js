@@ -20,6 +20,18 @@ function summarizeByStatus(tableName) {
     .all();
 }
 
+function toCutoffIso(days) {
+  const normalizedDays = Math.max(0, Number(days) || 0);
+  return new Date(Date.now() - normalizedDays * 24 * 60 * 60 * 1000).toISOString();
+}
+
+function getRetentionPolicy() {
+  return {
+    visitors_days: env.visitorRetentionDays,
+    business_days: env.businessDataRetentionDays,
+  };
+}
+
 function buildSystemDetail() {
   const databasePing = db.prepare('SELECT 1 AS ok').get();
   const platformChecks = getPlatformConfigChecks();
@@ -39,10 +51,104 @@ function buildSystemDetail() {
       path: env.sqlitePath,
       journal_mode: db.pragma('journal_mode', { simple: true }),
     },
+    retention_policy: getRetentionPolicy(),
     platforms: platformChecks,
     warnings: platformChecks
       .filter((item) => !item.configured)
       .map((item) => `${item.label} 配置不完整：${item.issues.join('、')}`),
+  };
+}
+
+function cleanupOldDataRecords() {
+  const visitorCutoff = toCutoffIso(env.visitorRetentionDays);
+  const businessCutoff = toCutoffIso(env.businessDataRetentionDays);
+
+  const countVisitorsStmt = db.prepare(
+    `
+      SELECT COUNT(*) AS count
+      FROM visitors
+      WHERE datetime(timestamp) < datetime(?)
+    `
+  );
+  const countOrdersStmt = db.prepare(
+    `
+      SELECT COUNT(*) AS count
+      FROM orders
+      WHERE datetime(created_at) < datetime(?)
+    `
+  );
+  const countMatchesStmt = db.prepare(
+    `
+      SELECT COUNT(*) AS count
+      FROM matches
+      WHERE order_id IN (
+        SELECT id
+        FROM orders
+        WHERE datetime(created_at) < datetime(?)
+      )
+    `
+  );
+  const countCallbacksStmt = db.prepare(
+    `
+      SELECT COUNT(*) AS count
+      FROM callbacks
+      WHERE order_id IN (
+        SELECT id
+        FROM orders
+        WHERE datetime(created_at) < datetime(?)
+      )
+    `
+  );
+  const countWebhookEventsStmt = db.prepare(
+    `
+      SELECT COUNT(*) AS count
+      FROM webhook_events
+      WHERE datetime(COALESCE(processed_at, received_at)) < datetime(?)
+    `
+  );
+  const deleteWebhookEventsStmt = db.prepare(
+    `
+      DELETE FROM webhook_events
+      WHERE datetime(COALESCE(processed_at, received_at)) < datetime(?)
+    `
+  );
+  const deleteOrdersStmt = db.prepare(
+    `
+      DELETE FROM orders
+      WHERE datetime(created_at) < datetime(?)
+    `
+  );
+  const deleteVisitorsStmt = db.prepare(
+    `
+      DELETE FROM visitors
+      WHERE datetime(timestamp) < datetime(?)
+    `
+  );
+
+  const cleanupTransaction = db.transaction(() => {
+    const deleted = {
+      visitors: countVisitorsStmt.get(visitorCutoff).count,
+      orders: countOrdersStmt.get(businessCutoff).count,
+      matches: countMatchesStmt.get(businessCutoff).count,
+      callbacks: countCallbacksStmt.get(businessCutoff).count,
+      webhook_events: countWebhookEventsStmt.get(businessCutoff).count,
+    };
+
+    deleteWebhookEventsStmt.run(businessCutoff);
+    deleteOrdersStmt.run(businessCutoff);
+    deleteVisitorsStmt.run(visitorCutoff);
+
+    return deleted;
+  });
+
+  return {
+    executed_at: new Date().toISOString(),
+    retention_policy: getRetentionPolicy(),
+    cutoffs: {
+      visitors_before: visitorCutoff,
+      business_before: businessCutoff,
+    },
+    deleted: cleanupTransaction(),
   };
 }
 
@@ -64,6 +170,27 @@ function getHealth(req, res, next) {
 function getSystemDetail(req, res, next) {
   try {
     res.json(buildSystemDetail());
+  } catch (error) {
+    next(error);
+  }
+}
+
+function cleanupOldData(req, res, next) {
+  try {
+    if (req.body?.confirm !== true) {
+      res.status(400).json({
+        error: 'Bad Request',
+        message: '请在请求体中传入 {"confirm": true}，确认后再清理旧数据。',
+      });
+      return;
+    }
+
+    const result = cleanupOldDataRecords();
+    res.json({
+      ok: true,
+      message: '旧数据清理完成。',
+      result,
+    });
   } catch (error) {
     next(error);
   }
@@ -93,4 +220,6 @@ module.exports = {
   getHealth,
   getSystemDetail,
   getStats,
+  cleanupOldData,
+  cleanupOldDataRecords,
 };

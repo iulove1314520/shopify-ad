@@ -89,6 +89,7 @@ docker compose exec -T api npm test
 | `CORS_ALLOW_ORIGINS` | 允许跨域访问的来源列表，走同域代理时可留空 |
 | `SQLITE_PATH` | SQLite 数据库文件路径 |
 | `VISITOR_RETENTION_DAYS` | 访客数据保留天数 |
+| `BUSINESS_DATA_RETENTION_DAYS` | 订单、匹配、回传、Webhook 记录的保留天数 |
 | `MATCH_WINDOW_DAYS` | 订单匹配时间窗口，单位天 |
 | `REQUEST_TIMEOUT_MS` | 调用第三方平台 API 的超时时间 |
 | `CALLBACK_MAX_ATTEMPTS` | 单次回传流程里允许的最大尝试次数 |
@@ -99,6 +100,8 @@ docker compose exec -T api npm test
 | `WEBHOOK_RATE_LIMIT_MAX` | Shopify Webhook 接口限流窗口内允许的最大请求数 |
 | `RETRY_RATE_LIMIT_WINDOW_MS` | 手动重试接口的限流窗口 |
 | `RETRY_RATE_LIMIT_MAX` | 手动重试接口限流窗口内允许的最大请求数 |
+| `CLEANUP_RATE_LIMIT_WINDOW_MS` | 一键清理旧数据接口的限流窗口 |
+| `CLEANUP_RATE_LIMIT_MAX` | 一键清理旧数据接口限流窗口内允许的最大请求数 |
 | `DEFAULT_LIST_LIMIT` | 列表接口默认返回条数 |
 | `MAX_LIST_LIMIT` | 列表接口允许查询的最大条数 |
 | `API_AUTH_TOKEN` | 看板接口鉴权令牌 |
@@ -127,6 +130,7 @@ docker compose exec -T api npm test
 
 - `GET /api/stats`
 - `GET /api/system`
+- `POST /api/system/cleanup-old-data`
 - `GET /api/visitors`
 - `GET /api/orders`
 - `POST /api/orders/:orderId/retry-callback`
@@ -139,10 +143,12 @@ docker compose exec -T api npm test
 新增说明：
 
 - `POST /api/orders/:orderId/retry-callback` 用于手动重试失败或已跳过的广告平台回传
+- `POST /api/system/cleanup-old-data` 用于一键清理超出保留期的旧访客、旧订单、旧匹配、旧回传和旧 Webhook 记录
 - 该接口需要和其他看板接口一样携带 `API_AUTH_TOKEN`
 - 如果订单已经成功回传，接口会返回 `409`
 - `GET /api/system` 提供仅限已鉴权用户查看的详细系统状态，包括数据库与进程信息
 - `GET /api/system` 现在还会返回 TikTok / Facebook 的配置自检结果，WebUI 会直接显示“已就绪 / 待补齐”
+- `GET /api/system` 还会返回当前的数据保留策略，WebUI 会据此提示“一键清理旧数据”会删除哪些历史记录
 - `GET /api/orders`、`GET /api/callbacks`、`GET /api/webhook-events` 会返回 `trace_id`，方便一条订单一路查到底
 - `GET /api/matches` 会返回 `match_score` 和 `match_signals`，方便判断匹配是否可靠
 
@@ -166,6 +172,7 @@ http://localhost:38417/ui
 - WebUI 不会自动读取服务器上的 `.env`
 - Token 只会保存在当前浏览器的 localStorage
 - 页面现在支持在订单列表中直接手动重试失败或未完成的订单回传
+- 页面现在支持“一键清理旧数据”，只会清理超过保留期的历史记录，不会直接清空最近数据
 - 页面支持“只看异常明细”，方便快速过滤失败订单、失败回调和失败事件
 - 页面会直接显示 TikTok / Facebook 是否已配置完整
 - 订单、回传、Webhook 列表会展示“排查编号”，方便把同一次处理链路串起来看
