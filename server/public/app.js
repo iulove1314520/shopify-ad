@@ -18,6 +18,8 @@ const state = {
 const elements = {
   tokenInput: document.getElementById('tokenInput'),
   toggleTokenBtn: document.getElementById('toggleTokenBtn'),
+  toggleSidebarBtn: document.getElementById('toggleSidebarBtn'),
+  sidebar: document.querySelector('.sidebar'),
   saveTokenBtn: document.getElementById('saveTokenBtn'),
   clearTokenBtn: document.getElementById('clearTokenBtn'),
   refreshBtn: document.getElementById('refreshBtn'),
@@ -322,17 +324,21 @@ function renderMetricGrid(stats) {
     ['successful_callbacks', '实际回传成功', formatter.format(callbackSuccessCount)],
   ];
 
-  elements.metricGrid.innerHTML = cards
-    .map(
-      ([key, label, value]) => `
-        <div class="metric-card glass-panel" title="${escapeHtml(describeMetric(key))}">
-          <span class="metric-label">${escapeHtml(label)}</span>
-          <div class="metric-value mono">${escapeHtml(value)}</div>
-          <small class="metric-desc">${escapeHtml(describeMetric(key))}</small>
-        </div>
-      `
-    )
-    .join('');
+  const frag = document.createDocumentFragment();
+  cards.forEach(([key, label, value]) => {
+    const div = document.createElement('div');
+    div.className = 'metric-card glass-panel';
+    div.title = describeMetric(key);
+    div.innerHTML = `
+      <span class="metric-label">${escapeHtml(label)}</span>
+      <div class="metric-value mono">${escapeHtml(value)}</div>
+      <small class="metric-desc">${escapeHtml(describeMetric(key))}</small>
+    `;
+    frag.appendChild(div);
+  });
+
+  elements.metricGrid.innerHTML = '';
+  elements.metricGrid.appendChild(frag);
 }
 
 function renderStatusList(container, rows, emptyLabel) {
@@ -346,24 +352,27 @@ function renderStatusList(container, rows, emptyLabel) {
     return;
   }
 
-  container.innerHTML = `
-    <div class="status-list">
-      ${rows
-        .map((row) => {
-          const translated = translateStatus(row.status);
-          return `
-            <div class="status-item">
-              <div class="status-item-left">
-                <strong>${escapeHtml(translated)}</strong>
-                <span>共 ${escapeHtml(row.count)} 条记录</span>
-              </div>
-              <span class="status-count">${escapeHtml(row.count)}</span>
-            </div>
-          `;
-        })
-        .join('')}
-    </div>
-  `;
+    const frag = document.createDocumentFragment();
+    const listDiv = document.createElement('div');
+    listDiv.className = 'status-list';
+
+    rows.forEach((row) => {
+      const translated = translateStatus(row.status);
+      const itemDiv = document.createElement('div');
+      itemDiv.className = 'status-item';
+      itemDiv.innerHTML = `
+        <div class="status-item-left">
+          <strong>${escapeHtml(translated)}</strong>
+          <span>共 ${escapeHtml(row.count)} 条记录</span>
+        </div>
+        <span class="status-count">${escapeHtml(row.count)}</span>
+      `;
+      listDiv.appendChild(itemDiv);
+    });
+
+    frag.appendChild(listDiv);
+    container.innerHTML = '';
+    container.appendChild(frag);
 }
 
 function getCleanupLimits(system) {
@@ -590,6 +599,16 @@ function openCleanupModal() {
 
   if (elements.cleanupModal) {
     elements.cleanupModal.hidden = false;
+    
+    const cleanupTabs = document.querySelectorAll('.cleanup-tab');
+    const cleanupTabContents = document.querySelectorAll('.cleanup-tab-content');
+    cleanupTabs.forEach(t => t.classList.remove('active'));
+    cleanupTabContents.forEach(c => c.classList.remove('active'));
+    
+    const defaultTab = document.querySelector('[data-target="cleanup-retention"]');
+    const defaultContent = document.getElementById('cleanup-retention');
+    if (defaultTab) defaultTab.classList.add('active');
+    if (defaultContent) defaultContent.classList.add('active');
   }
 }
 
@@ -621,27 +640,32 @@ function renderPlatformStatus(system) {
     return;
   }
 
-  elements.platformStatusList.innerHTML = `
-    <div class="status-list">
-      ${platforms
-        .map((item) => `
-          <div class="status-item">
-            <div class="status-item-left">
-              <strong>${escapeHtml(item.label)}</strong>
-              <span class="platform-issues">
-                ${escapeHtml(
-                  item.configured
-                    ? '关键配置已就绪，可以正常尝试回传。'
-                    : item.issues.join('、')
-                )}
-              </span>
-            </div>
-            ${badge(item.configured ? 'success' : 'failed', item.configured ? '已就绪' : '待补齐')}
-          </div>
-        `)
-        .join('')}
-    </div>
-  `;
+  const frag = document.createDocumentFragment();
+  const listDiv = document.createElement('div');
+  listDiv.className = 'status-list';
+
+  platforms.forEach((item) => {
+    const itemDiv = document.createElement('div');
+    itemDiv.className = 'status-item';
+    itemDiv.innerHTML = `
+      <div class="status-item-left">
+        <strong>${escapeHtml(item.label)}</strong>
+        <span class="platform-issues">
+          ${escapeHtml(
+            item.configured
+              ? '关键配置已就绪，可以正常尝试回传。'
+              : item.issues.join('、')
+          )}
+        </span>
+      </div>
+      ${badge(item.configured ? 'success' : 'failed', item.configured ? '已就绪' : '待补齐')}
+    `;
+    listDiv.appendChild(itemDiv);
+  });
+
+  frag.appendChild(listDiv);
+  elements.platformStatusList.innerHTML = '';
+  elements.platformStatusList.appendChild(frag);
 }
 
 function renderEmpty(container, title, message) {
@@ -666,10 +690,31 @@ function renderTextDetail(value, emptyLabel = '-') {
   return `
     <details class="text-detail">
       <summary>点击查看完整内容</summary>
-      <p>${escapeHtml(text)}</p>
+      <div class="detail-content-wrap">
+        <p>${escapeHtml(text)}</p>
+        <button class="btn-copy-float" data-text="${escapeHtml(text).replace(/"/g, '&quot;')}" onclick="copyToClipboard(this)" title="复制完整内容">
+          <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+        </button>
+      </div>
     </details>
   `;
 }
+
+window.copyToClipboard = async function(btn) {
+  const text = btn.getAttribute('data-text');
+  try {
+    await navigator.clipboard.writeText(text);
+    const originalHtml = btn.innerHTML;
+    btn.innerHTML = '<svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>';
+    btn.classList.add('copied');
+    setTimeout(() => {
+      btn.innerHTML = originalHtml;
+      btn.classList.remove('copied');
+    }, 2000);
+  } catch(e) {
+    console.error('Copy failed', e);
+  }
+};
 
 function renderReasonDetail(value, emptyLabel = '暂无说明') {
   const parts = parseReasonDetail(value);
@@ -701,30 +746,37 @@ function renderTable(container, columns, rows, emptyTitle, emptyMessage) {
     return;
   }
 
-  const thead = columns
-    .map(
-      (column) => `
-        <th>
-          <span class="head-main">${escapeHtml(column.label)}</span>
-          <span class="head-help">${escapeHtml(column.help)}</span>
-        </th>
-      `
-    )
-    .join('');
+  const frag = document.createDocumentFragment();
+  const table = document.createElement('table');
 
-  const tbody = rows
-    .map((row) => {
-      const cells = columns.map((column) => `<td>${column.render(row)}</td>`).join('');
-      return `<tr>${cells}</tr>`;
-    })
-    .join('');
+  const thead = document.createElement('thead');
+  const trHead = document.createElement('tr');
+  columns.forEach((column) => {
+    const th = document.createElement('th');
+    th.innerHTML = `
+      <span class="head-main">${escapeHtml(column.label)}</span>
+      <span class="head-help">${escapeHtml(column.help)}</span>
+    `;
+    trHead.appendChild(th);
+  });
+  thead.appendChild(trHead);
+  table.appendChild(thead);
 
-  container.innerHTML = `
-    <table>
-      <thead><tr>${thead}</tr></thead>
-      <tbody>${tbody}</tbody>
-    </table>
-  `;
+  const tbody = document.createElement('tbody');
+  rows.forEach((row) => {
+    const tr = document.createElement('tr');
+    columns.forEach((column) => {
+      const td = document.createElement('td');
+      td.innerHTML = column.render(row);
+      tr.appendChild(td);
+    });
+    tbody.appendChild(tr);
+  });
+  table.appendChild(tbody);
+  
+  frag.appendChild(table);
+  container.innerHTML = '';
+  container.appendChild(frag);
 }
 
 function updateHealth(health) {
@@ -859,14 +911,6 @@ function getFilteredRows(rows, type) {
 
   if (type === 'orders') {
     return rows.filter(isProblemOrder);
-  }
-
-  if (type === 'callbacks') {
-    return rows.filter(isProblemCallback);
-  }
-
-  if (type === 'events') {
-    return rows.filter(isProblemEvent);
   }
 
   return rows;
@@ -1184,8 +1228,10 @@ function renderBusinessViews() {
 }
 
 async function refreshDashboard() {
-  const token = elements.tokenInput.value.trim();
+  const token = readToken();
   elements.refreshBtn.disabled = true;
+  elements.refreshBtn.classList.add('is-refreshing');
+  if (elements.scrollCanvas) elements.scrollCanvas.classList.add('is-refreshing-data');
   setAuthStatus('正在加载数据...', 'warning');
 
   try {
@@ -1196,6 +1242,8 @@ async function refreshDashboard() {
     elements.healthStatusText.textContent = '无法连接后台';
     setAuthStatus(`后台服务未响应：${error.message}`, 'danger');
     elements.refreshBtn.disabled = false;
+    elements.refreshBtn.classList.remove('is-refreshing');
+    if (elements.scrollCanvas) elements.scrollCanvas.classList.remove('is-refreshing-data');
     return;
   }
 
@@ -1215,6 +1263,8 @@ async function refreshDashboard() {
     updateFilterUi();
     setAuthStatus('未输入令牌，业务数据已隐藏。', 'warning');
     elements.refreshBtn.disabled = false;
+    elements.refreshBtn.classList.remove('is-refreshing');
+    if (elements.scrollCanvas) elements.scrollCanvas.classList.remove('is-refreshing-data');
     return;
   }
 
@@ -1249,6 +1299,8 @@ async function refreshDashboard() {
     setAuthStatus(`读取数据报错：${error.message}`, 'danger');
   } finally {
     elements.refreshBtn.disabled = false;
+    elements.refreshBtn.classList.remove('is-refreshing');
+    if (elements.scrollCanvas) elements.scrollCanvas.classList.remove('is-refreshing-data');
   }
 }
 
@@ -1434,16 +1486,32 @@ async function handlePurgeAllData(button) {
 }
 
 function bindEvents() {
+  if (elements.toggleSidebarBtn && elements.sidebar) {
+    elements.toggleSidebarBtn.addEventListener('click', () => {
+      elements.sidebar.classList.toggle('collapsed');
+    });
+  }
+
+  const authIconOnly = document.querySelector('.auth-icon-only');
+  if (authIconOnly && elements.sidebar) {
+    authIconOnly.addEventListener('click', () => {
+      elements.sidebar.classList.remove('collapsed');
+      elements.tokenInput.focus();
+    });
+  }
+
   elements.saveTokenBtn.addEventListener('click', () => {
     const token = elements.tokenInput.value.trim();
     writeToken(token);
 
     if (token) {
-      setAuthStatus('已成功保存验证令牌。', 'success');
+      setAuthStatus('已成功保存验证令牌，正在刷新数据...', 'success');
+      refreshDashboard();
       return;
     }
 
     setAuthStatus('令牌为空，已取消验证。', 'warning');
+    refreshDashboard();
   });
 
   elements.clearTokenBtn.addEventListener('click', () => {
@@ -1531,6 +1599,18 @@ function bindEvents() {
       handlePurgeAllData(elements.purgeAllDataBtn)
     );
   }
+
+  const cleanupTabs = document.querySelectorAll('.cleanup-tab');
+  const cleanupTabContents = document.querySelectorAll('.cleanup-tab-content');
+  cleanupTabs.forEach(tab => {
+    tab.addEventListener('click', () => {
+      cleanupTabs.forEach(t => t.classList.remove('active'));
+      cleanupTabContents.forEach(c => c.classList.remove('active'));
+      tab.classList.add('active');
+      const target = document.getElementById(tab.dataset.target);
+      if (target) target.classList.add('active');
+    });
+  });
 
   if (elements.failedFilterBtn) {
     elements.failedFilterBtn.addEventListener('click', () => {

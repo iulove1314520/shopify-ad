@@ -4,11 +4,13 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Shopee 广告回传后台</title>
+  <meta name="description" content="Shopee CPAS 广告回传监控面板 — 监控订单、访客点击以及 TikTok / Facebook 广告回调状态。">
+  <meta name="robots" content="noindex, nofollow">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@500;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/ui/styles.css?v=20260330-2109" />
-  <script src="/ui/app.js?v=20260330-2109" defer></script>
+  <link rel="stylesheet" href="/ui/styles.css?v=20260331-0049" />
+  <script src="/ui/app.js?v=20260331-0049" defer></script>
 </head>
 <body class="aurora-theme">
   <!-- CSS Background Blur Orbs -->
@@ -20,14 +22,19 @@
     <!-- Sidebar Navigation -->
     <aside class="sidebar glass-panel">
       <div class="sidebar-brand">
-        <div class="logo-glow">
-          <svg viewBox="0 0 24 24" fill="none" class="brand-icon">
-            <path d="M12 2L2 7L12 12L22 7L12 2Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
-            <path d="M2 17L12 22L22 17" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
-            <path d="M2 12L12 17L22 12" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
-          </svg>
+        <div class="brand-wrapper">
+          <div class="logo-glow">
+            <svg viewBox="0 0 24 24" fill="none" class="brand-icon">
+              <path d="M12 2L2 7L12 12L22 7L12 2Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+              <path d="M2 17L12 22L22 17" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+              <path d="M2 12L12 17L22 12" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+            </svg>
+          </div>
+          <h2 class="sidebar-title">系统后台</h2>
         </div>
-        <h2>回传系统后台</h2>
+        <button id="toggleSidebarBtn" class="sidebar-toggle-btn" title="收起导航栏">
+          <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>
+        </button>
       </div>
 
       <nav class="sidebar-nav">
@@ -56,6 +63,7 @@
 
       <div class="sidebar-footer">
         <div class="auth-module">
+          <span class="auth-icon-only" title="接口访问验证">🔒</span>
           <div class="auth-header">
             <span class="icon">🔒</span> 接口访问验证
           </div>
@@ -240,7 +248,12 @@
         登录后可查看当前访客、订单、匹配、回传和 Webhook 的数量。
       </div>
 
-      <div class="cleanup-modal-grid">
+      <div class="cleanup-tabs">
+        <button class="cleanup-tab active" data-target="cleanup-retention">按保留期清理</button>
+        <button class="cleanup-tab cleanup-tab-danger" data-target="cleanup-purge">清空全部数据</button>
+      </div>
+
+      <div class="cleanup-tab-content active" id="cleanup-retention">
         <section class="cleanup-card">
           <div class="cleanup-card-head">
             <h3>按保留期清理</h3>
@@ -273,7 +286,9 @@
             <button id="cleanupDataBtn" class="btn btn-danger-soft" type="button">执行旧数据清理</button>
           </div>
         </section>
+      </div>
 
+      <div class="cleanup-tab-content" id="cleanup-purge">
         <section class="cleanup-card cleanup-card-danger">
           <div class="cleanup-card-head">
             <h3>清空全部数据</h3>

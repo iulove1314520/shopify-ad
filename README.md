@@ -110,6 +110,7 @@ docker compose exec -T api npm test
 | `SHOPIFY_WEBHOOK_SECRET` | Shopify Webhook 验签密钥 |
 | `TIKTOK_PIXEL_ID` | TikTok Pixel ID |
 | `TIKTOK_ACCESS_TOKEN` | TikTok Access Token |
+| `TIKTOK_PAGE_URL_BASE` | 当访客记录只保存相对路径时，用来拼接 TikTok 所需页面 URL 的基础域名 |
 | `FACEBOOK_PIXEL_ID` | Facebook Pixel ID |
 | `FACEBOOK_ACCESS_TOKEN` | Facebook Access Token |
 
@@ -237,6 +238,7 @@ curl -X POST http://localhost:38417/api/orders/7480137056487/retry-callback \
 - 订单状态原因 `status_reason`，便于排查未匹配或回传失败
 - 看板调试接口：`orders`、`webhook-events`、`stats`
 - 回传请求会记录触发来源、尝试次数、HTTP 状态、请求摘要和平台返回摘要
+- TikTok 回传现在会尽量补齐 `event_source`、`event_id`、`context.ip`、`context.user_agent` 和 `context.page.url`
 - 可重试失败会在单次处理流程内自动重试，并保留每次尝试记录
 - 支持通过鉴权接口手动重试失败或已跳过的订单回传
 - 新增多条件匹配评分，匹配结果会记录 `match_score` 和 `match_signals`

@@ -67,6 +67,7 @@ const env = {
   shopifyWebhookSecret: process.env.SHOPIFY_WEBHOOK_SECRET || '',
   tiktokPixelId: process.env.TIKTOK_PIXEL_ID || '',
   tiktokAccessToken: process.env.TIKTOK_ACCESS_TOKEN || '',
+  tiktokPageUrlBase: process.env.TIKTOK_PAGE_URL_BASE || '',
   tiktokApiUrl:
     process.env.TIKTOK_API_URL ||
     'https://business-api.tiktok.com/open_api/v1.3/event/track/',

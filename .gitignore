@@ -1,31 +1,32 @@
-# 本地规划与过程文档
-后端搭建任务清单.md
-记录.md
-虾皮广告追踪系统.md
+# 本地流程与内部记录
 AGENTS.md
+记录.md
+docx/
+.codex
 
 # 本地敏感配置
 .env
 .env.*
 !.env.example
+*.local
 
-# 本地数据与 SQLite 数据库文件
+# 运行时数据与 SQLite 数据库
 data/
 *.db
 *.db-*
 *.sqlite
 *.sqlite3
 
-# Node.js 依赖与调试日志
+# Node.js 依赖、测试产物与日志
 node_modules/
-server/node_modules/
+coverage/
+.nyc_output/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 *.log
 logs/
-coverage/
 
 # 编辑器与系统缓存
 .DS_Store
@@ -39,4 +40,3 @@ temp/
 *.swp
 *.swo
 *~
-优化方案.md

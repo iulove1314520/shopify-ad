@@ -373,10 +373,11 @@ async function dispatchCallback(
   const sender = resolveSender(platform, options.senders);
   const traceId = String(options.traceId || '').trim();
   const maxAttempts = Math.max(1, env.callbackMaxAttempts);
+  const callbackContext = options.callbackContext || {};
   let finalResult = null;
 
   for (let index = 0; index < maxAttempts; index += 1) {
-    const rawResult = await sender(order, clickId);
+    const rawResult = await sender(order, clickId, callbackContext);
     const callbackResult = {
       ...rawResult,
       attemptNumber: getNextAttemptNumber(order.id, platform),
@@ -428,6 +429,7 @@ async function matchOrder(order, options = {}) {
   const triggerSource = options.triggerSource || 'webhook';
   const traceId = String(options.traceId || '').trim();
   let match = enrichExistingMatch(order, getExistingMatch(order.id));
+  let matchedVisitor = null;
   let platform;
   let clickId;
   let confidence;
@@ -474,6 +476,7 @@ async function matchOrder(order, options = {}) {
     platform = bestMatch.visitor.ttclid ? 'TikTok' : 'Facebook';
     clickId = bestMatch.visitor.ttclid || bestMatch.visitor.fbclid;
     confidence = bestMatch.confidence;
+    matchedVisitor = bestMatch.visitor;
     matchMeta = {
       score: bestMatch.score,
       signals: bestMatch.signals,
@@ -505,6 +508,7 @@ async function matchOrder(order, options = {}) {
     platform = match.platform;
     clickId = match.click_id;
     confidence = match.confidence;
+    matchedVisitor = getVisitorById(match.visitor_id);
     matchMeta = {
       score: Number(match.match_score || 0),
       signals: String(match.match_signals || '')
@@ -517,6 +521,12 @@ async function matchOrder(order, options = {}) {
   const callbackResult = await dispatchCallback(order, platform, clickId, triggerSource, {
     traceId,
     senders: options.senders,
+    callbackContext: {
+      visitor: matchedVisitor,
+      matchMeta,
+      traceId,
+      triggerSource,
+    },
   });
 
   if (!callbackResult) {
