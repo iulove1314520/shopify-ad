@@ -806,19 +806,31 @@ body.aurora-theme {
   transform: translateY(-2px);
   box-shadow: var(--shadow-md);
 }
-.feed-grid { display: flex; flex-wrap: wrap; gap: 20px; align-items: flex-start; }
+.feed-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 18px 24px;
+  align-items: start;
+}
 .feed-item {
   display: flex; flex-direction: column; gap: 6px;
-  min-width: 140px; flex: 1 1 auto;
+  min-width: 0;
 }
 .feed-label {
   font-size: 0.72rem; color: #4B5563; font-weight: 500;
   letter-spacing: 0.03em; text-transform: uppercase;
 }
-.feed-value { font-size: 0.95rem; color: var(--text-main); line-height: 1.5; overflow-wrap: anywhere; word-break: break-word; }
-.feed-action { flex-basis: 100%; align-items: flex-end; border-top: 1px dashed rgba(0,0,0,0.08); padding-top: 16px; margin-top: 8px; }
+.feed-value {
+  font-size: 0.95rem; color: var(--text-main); line-height: 1.5;
+  overflow-wrap: anywhere; word-break: break-word;
+}
+.feed-action {
+  grid-column: 1 / -1;
+  border-top: 1px dashed rgba(0,0,0,0.08);
+  padding-top: 16px; margin-top: 4px;
+}
 .feed-action .feed-label { display: none; }
-.feed-reason { flex-basis: 100%; min-width: 100%; }
+.feed-reason { grid-column: 1 / -1; }
 
 /* Badges */
 .badge { display: inline-block; padding: 4px 10px; border-radius: 6px; font-size: 0.8rem; font-weight: 600; white-space: nowrap; border: 1px solid transparent; }
