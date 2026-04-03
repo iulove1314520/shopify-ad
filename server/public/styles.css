@@ -101,7 +101,6 @@ body.aurora-theme {
 .sidebar.collapsed .sidebar-title,
 .sidebar.collapsed .nav-group-title,
 .sidebar.collapsed .nav-item span:not(.icon),
-.sidebar.collapsed .auth-header,
 .sidebar.collapsed .auth-desc,
 .sidebar.collapsed .input-glass,
 .sidebar.collapsed .btn-group-row,
@@ -111,7 +110,7 @@ body.aurora-theme {
   position: absolute;
   transform: translateX(-10px);
 }
-.sidebar-title, .nav-group-title, .nav-item span:not(.icon), .auth-header, .auth-desc, .input-glass, .btn-group-row, #authStatus {
+.sidebar-title, .nav-group-title, .nav-item span:not(.icon), .auth-desc, .input-glass, .btn-group-row, #authStatus {
   transition: opacity 0.2s, transform 0.2s;
   white-space: nowrap;
 }
@@ -153,7 +152,16 @@ body.aurora-theme {
   align-items: center;
   gap: 12px;
 }
-.sidebar.collapsed .sidebar-brand { padding: 28px 14px 16px; justify-content: center; }
+.sidebar.collapsed .sidebar-brand {
+  padding: 20px 0 12px;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+.sidebar.collapsed .brand-wrapper { gap: 0; }
+.sidebar.collapsed .sidebar-toggle-btn {
+  padding: 4px;
+}
 
 .sidebar-toggle-btn {
   background: transparent; border: none; color: var(--text-dark); cursor: pointer;
@@ -257,6 +265,12 @@ body.aurora-theme {
 }
 .nav-item.active .icon { transform: scale(1.05); }
 
+.sidebar.collapsed .nav-item {
+  justify-content: center;
+  padding: 10px;
+}
+.sidebar.collapsed .sidebar-nav { padding: 0 10px; }
+
 .sidebar-footer {
   padding: 12px;
   border-top: 1px solid rgba(0, 0, 0, 0.06);
@@ -287,7 +301,17 @@ body.aurora-theme {
 .auth-module.is-authorized .auth-desc,
 .auth-module.is-authorized .input-glass,
 .auth-module.is-authorized #saveTokenBtn { display: none; }
-.sidebar.collapsed .auth-module { padding: 12px 0; display: flex; justify-content: center; }
+.sidebar.collapsed .auth-module {
+  padding: 0;
+}
+.sidebar.collapsed .auth-module > *:not(summary) {
+  display: none;
+}
+.sidebar.collapsed .auth-header {
+  justify-content: center;
+  padding: 9px;
+  gap: 0;
+}
 .auth-icon-only { display: none; text-align: center; font-size: 1.4rem; padding: 4px; cursor: pointer; }
 .sidebar.collapsed .auth-icon-only { display: block; }
 
