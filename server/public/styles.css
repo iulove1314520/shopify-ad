@@ -311,6 +311,11 @@ body.aurora-theme {
   justify-content: center;
   padding: 9px;
   gap: 0;
+  font-size: 0;
+  overflow: hidden;
+}
+.sidebar.collapsed .auth-header .icon {
+  font-size: 1.1rem;
 }
 .auth-icon-only { display: none; text-align: center; font-size: 1.4rem; padding: 4px; cursor: pointer; }
 .sidebar.collapsed .auth-icon-only { display: block; }
