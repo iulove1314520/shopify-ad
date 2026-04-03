@@ -56,6 +56,7 @@ const elements = {
   failedFilterBtn: document.getElementById('failedFilterBtn'),
   filterStatusText: document.getElementById('filterStatusText'),
   scrollCanvas: document.querySelector('.scroll-canvas'),
+  authModule: document.querySelector('.auth-module'),
 };
 
 const endpointConfig = {
@@ -722,21 +723,36 @@ function renderReasonDetail(value, emptyLabel = '暂无说明') {
     return renderTextDetail(value, emptyLabel);
   }
 
+  const primaryPart = parts.find(p => p.key === 'reason') || parts.find(p => p.key === 'error') || parts[0];
+  const otherParts = parts.filter(p => p !== primaryPart);
+
+  const primaryText = escapeHtml(translateReasonValue(primaryPart.key, primaryPart.value));
+  
+  if (otherParts.length === 0) {
+    return `<div style="color: var(--warning); font-weight: 500; font-size: 0.9rem;">${primaryText}</div>`;
+  }
+
   return `
-    <div class="reason-list">
-      ${parts
-        .map(
-          (item) => `
-            <div class="reason-item">
-              <span class="reason-key">${escapeHtml(describeReasonKey(item.key))}</span>
-              <span class="reason-value">${escapeHtml(
-                translateReasonValue(item.key, item.value)
-              )}</span>
-            </div>
-          `
-        )
-        .join('')}
+    <div style="color: var(--warning); font-weight: 500; font-size: 0.9rem; margin-bottom: 8px; line-height: 1.4;">
+      ${primaryText}
     </div>
+    <details class="text-detail">
+      <summary>排查数据明细</summary>
+      <div class="detail-content-wrap">
+        <div class="reason-list" style="margin-top: 8px;">
+          ${otherParts
+            .map(
+              (item) => `
+                <div class="reason-item">
+                  <span class="reason-key">${escapeHtml(describeReasonKey(item.key))}</span>
+                  <span class="reason-value">${escapeHtml(translateReasonValue(item.key, item.value))}</span>
+                </div>
+              `
+            )
+            .join('')}
+        </div>
+      </div>
+    </details>
   `;
 }
 
@@ -747,34 +763,38 @@ function renderTable(container, columns, rows, emptyTitle, emptyMessage) {
   }
 
   const frag = document.createDocumentFragment();
-  const table = document.createElement('table');
+  const feedList = document.createElement('div');
+  feedList.className = 'feed-list';
 
-  const thead = document.createElement('thead');
-  const trHead = document.createElement('tr');
-  columns.forEach((column) => {
-    const th = document.createElement('th');
-    th.innerHTML = `
-      <span class="head-main">${escapeHtml(column.label)}</span>
-      <span class="head-help">${escapeHtml(column.help)}</span>
-    `;
-    trHead.appendChild(th);
-  });
-  thead.appendChild(trHead);
-  table.appendChild(thead);
-
-  const tbody = document.createElement('tbody');
   rows.forEach((row) => {
-    const tr = document.createElement('tr');
+    const card = document.createElement('div');
+    card.className = 'feed-card';
+
+    const grid = document.createElement('div');
+    grid.className = 'feed-grid';
+
     columns.forEach((column) => {
-      const td = document.createElement('td');
-      td.innerHTML = column.render(row);
-      tr.appendChild(td);
+      const renderResult = column.render(row);
+      const isAction = column.label === '操作';
+      const isReason = column.label === '失败原因' || column.label === '报错提示' || column.label === '报错详情';
+      
+      const item = document.createElement('div');
+      item.className = 'feed-item';
+      if (isAction) item.classList.add('feed-action');
+      if (isReason) item.classList.add('feed-reason');
+
+      item.innerHTML = `
+        <span class="feed-label" title="${escapeHtml(column.help)}">${escapeHtml(column.label)}</span>
+        <div class="feed-value">${renderResult}</div>
+      `;
+      grid.appendChild(item);
     });
-    tbody.appendChild(tr);
+
+    card.appendChild(grid);
+    feedList.appendChild(card);
   });
-  table.appendChild(tbody);
   
-  frag.appendChild(table);
+  frag.appendChild(feedList);
   container.innerHTML = '';
   container.appendChild(frag);
 }
@@ -1292,8 +1312,10 @@ async function refreshDashboard() {
 
     updateSystemDetail(system);
     renderBusinessViews();
+    elements.authModule.classList.add('is-authorized');
     setAuthStatus('数据已全部刷新成功。', 'success');
   } catch (error) {
+    elements.authModule.classList.remove('is-authorized');
     clearBusinessViews('由于令牌错误或网络问题，读取数据失败。');
     updateFilterUi();
     setAuthStatus(`读取数据报错：${error.message}`, 'danger');
@@ -1505,6 +1527,7 @@ function bindEvents() {
     writeToken(token);
 
     if (token) {
+      elements.authModule.classList.add('is-authorized');
       setAuthStatus('已成功保存验证令牌，正在刷新数据...', 'success');
       refreshDashboard();
       return;
@@ -1517,13 +1540,16 @@ function bindEvents() {
   elements.clearTokenBtn.addEventListener('click', () => {
     elements.tokenInput.value = '';
     writeToken('');
+    elements.authModule.classList.remove('is-authorized');
     setAuthStatus('已清除验证令牌。', 'danger');
   });
 
   elements.toggleTokenBtn.addEventListener('click', () => {
     const isPassword = elements.tokenInput.type === 'password';
     elements.tokenInput.type = isPassword ? 'text' : 'password';
-    elements.toggleTokenBtn.textContent = isPassword ? '❌' : '👁️';
+    elements.toggleTokenBtn.innerHTML = isPassword
+      ? '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>'
+      : '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>';
   });
 
   elements.refreshBtn.addEventListener('click', refreshDashboard);

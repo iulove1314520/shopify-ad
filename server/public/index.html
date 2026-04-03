@@ -9,8 +9,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@500;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/ui/styles.css?v=20260331-0049" />
-  <script src="/ui/app.js?v=20260331-0049" defer></script>
+  <link rel="stylesheet" href="/ui/styles.css?v=20260404-0100" />
+  <script src="/ui/app.js?v=20260404-0100" defer></script>
 </head>
 <body class="aurora-theme">
   <!-- CSS Background Blur Orbs -->
@@ -40,37 +40,36 @@
       <nav class="sidebar-nav">
         <div class="nav-group-title">数据看板</div>
         <a href="#overview" class="nav-item active">
-          <span class="icon">📊</span> <span>首页概览</span>
+          <span class="icon"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="4" rx="1"/><rect x="14" y="10" width="7" height="11" rx="1"/><rect x="3" y="13" width="7" height="8" rx="1"/></svg></span> <span>首页概览</span>
         </a>
         <a href="#orders" class="nav-item">
-          <span class="icon">🛍️</span> <span>订单记录</span>
+          <span class="icon"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg></span> <span>订单记录</span>
         </a>
         <a href="#callbacks" class="nav-item">
-          <span class="icon">📡</span> <span>广告回传</span>
+          <span class="icon"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2L11 13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg></span> <span>广告回传</span>
         </a>
         <a href="#matches" class="nav-item">
-          <span class="icon">🎯</span> <span>匹配记录</span>
+          <span class="icon"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg></span> <span>匹配记录</span>
         </a>
         
         <div class="nav-group-title">系统日志</div>
         <a href="#events" class="nav-item">
-          <span class="icon">⚡</span> <span>Webhook 接收</span>
+          <span class="icon"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg></span> <span>Webhook 接收</span>
         </a>
         <a href="#visitors" class="nav-item">
-          <span class="icon">🐾</span> <span>访客记录</span>
+          <span class="icon"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></span> <span>访客记录</span>
         </a>
       </nav>
 
       <div class="sidebar-footer">
-        <div class="auth-module">
-          <span class="auth-icon-only" title="接口访问验证">🔒</span>
-          <div class="auth-header">
-            <span class="icon">🔒</span> 接口访问验证
-          </div>
+        <details class="auth-module" open>
+          <summary class="auth-header">
+            <span class="icon"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></span> 接口访问验证
+          </summary>
           <p class="auth-desc">未输入令牌前只能查看系统状态。请输入令牌以查看真实业务数据。</p>
           <div class="input-glass">
             <input id="tokenInput" type="password" placeholder="请输入 API_AUTH_TOKEN" spellcheck="false" />
-            <button id="toggleTokenBtn" class="btn-icon">👁️</button>
+            <button id="toggleTokenBtn" class="btn-icon"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></button>
           </div>
           <div class="btn-group-row">
             <button id="saveTokenBtn" class="btn btn-primary btn-sm">确认授权</button>
@@ -79,18 +78,18 @@
           <div id="authStatus" class="status-indicator warning">
             <span class="status-dot warning"></span> 等待输入令牌
           </div>
-        </div>
+        </details>
+        <button id="openCleanupModalBtn" class="nav-item cleanup-nav-btn" type="button" title="管理过期数据清理策略">
+          <span class="icon"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg></span> <span>自动清理</span>
+        </button>
       </div>
     </aside>
 
     <!-- Main Workspace -->
     <main class="workspace">
       <!-- Top Header -->
+      <!-- Top Header -->
       <header class="topbar">
-        <div class="header-titles">
-          <h1>广告回传监控面板</h1>
-          <p class="subtitle"> 监控 Shopee 订单、访客点击，以及发给 TikTok 和 Facebook 的广告回调是否成功。</p>
-        </div>
         
         <div class="system-health-widget glass-panel">
           <div class="health-meta">
@@ -101,10 +100,6 @@
             <div id="healthPill" class="health-pill pulse-warning">
               <span class="status-ring"></span>
               <span id="healthStatusText">连接中...</span>
-            </div>
-            <div class="topbar-actions">
-              <button id="refreshBtn" class="btn btn-glow"><span class="icon">🔄</span> 刷新数据</button>
-              <button id="openCleanupModalBtn" class="btn btn-danger-soft" type="button"><span class="icon">🧹</span> 数据清理</button>
             </div>
           </div>
           <!-- Hidden compatibility elements to not break app.js -->
@@ -118,7 +113,7 @@
         <!-- Overview Module -->
         <div class="page-view active" id="view-overview">
           <div class="page-header">
-            <h2>📊 首页概览</h2>
+            <h2><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="4" rx="1"/><rect x="14" y="10" width="7" height="11" rx="1"/><rect x="3" y="13" width="7" height="8" rx="1"/></svg> 首页概览</h2>
             <p>今天最重要的统计数字与系统整体情况，快速判断业务是否健康。</p>
           </div>
           <section id="metricGrid" class="metrics-grid">
@@ -137,25 +132,25 @@
           <section class="insights-grid">
             <div class="insight-panel glass-panel">
               <div class="panel-header">
-                <span class="icon">🛍️</span> <h3>订单处理情况</h3>
+                <span class="icon"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg></span> <h3>订单处理情况</h3>
               </div>
               <div class="status-list" id="orderStatusList"></div>
             </div>
             <div class="insight-panel glass-panel">
               <div class="panel-header">
-                <span class="icon">📡</span> <h3>回调发送情况</h3>
+                <span class="icon"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2L11 13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg></span> <h3>回调发送情况</h3>
               </div>
               <div class="status-list" id="callbackStatusList"></div>
             </div>
             <div class="insight-panel glass-panel">
               <div class="panel-header">
-                <span class="icon">⚡</span> <h3>Webhook 接收情况</h3>
+                <span class="icon"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg></span> <h3>Webhook 接收情况</h3>
               </div>
               <div class="status-list" id="eventStatusList"></div>
             </div>
             <div class="insight-panel glass-panel">
               <div class="panel-header">
-                <span class="icon">🧩</span> <h3>平台配置状态</h3>
+                <span class="icon"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"/><rect x="2" y="14" width="20" height="8" rx="2" ry="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg></span> <h3>平台配置状态</h3>
               </div>
               <div class="status-list" id="platformStatusList"></div>
             </div>
@@ -167,7 +162,7 @@
           <div class="page-header">
             <div class="page-header-row">
               <div class="page-header-left">
-                <h2>🛍️ 订单记录</h2>
+                <h2><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg> 订单记录</h2>
                 <p>查看最近订单的处理结果和失败原因，直接定位问题或发起重试。</p>
               </div>
               <div class="section-tools">
@@ -184,7 +179,7 @@
         <!-- Callbacks Module -->
         <div class="page-view" id="view-callbacks">
           <div class="page-header">
-            <h2>📡 广告回传</h2>
+            <h2><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2L11 13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg> 广告回传</h2>
             <p>查看系统向 TikTok 和 Facebook 等平台发送广告回调的详细历史与状态。</p>
           </div>
           <section class="table-section glass-panel">
@@ -195,7 +190,7 @@
         <!-- Matches Module -->
         <div class="page-view" id="view-matches">
           <div class="page-header">
-            <h2>🎯 匹配记录</h2>
+            <h2><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg> 匹配记录</h2>
             <p>查看每一次订单转化与广告访客点击参数的详细匹配痕迹与命中信号。</p>
           </div>
           <section class="table-section glass-panel">
@@ -206,7 +201,7 @@
         <!-- Events Module -->
         <div class="page-view" id="view-events">
           <div class="page-header">
-            <h2>⚡ Webhook 接收</h2>
+            <h2><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg> Webhook 接收</h2>
             <p>监控从 Shopify 等电商平台接收到的所有实时事件推送及解析情况。</p>
           </div>
           <section class="table-section glass-panel">
@@ -217,7 +212,7 @@
         <!-- Visitors Module -->
         <div class="page-view" id="view-visitors">
           <div class="page-header">
-            <h2>🐾 访客记录</h2>
+            <h2><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg> 访客记录</h2>
             <p>查看最新通过广告链接访问店铺的访客行为与点击参数（ttclid, fbclid 等）。</p>
           </div>
           <section class="table-section glass-panel">
@@ -230,6 +225,14 @@
           Shopee CPAS Ad Tracker © 2026. Data strictly monitored.
         </div>
       </div>
+      
+      <!-- Floating Action Button -->
+      <button id="refreshBtn" class="fab-refresh" title="刷新数据" aria-label="Refresh Data">
+        <svg class="icon" viewBox="0 0 24 24" width="22" height="22" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="23 4 23 10 17 10"></polyline>
+          <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
+        </svg>
+      </button>
     </main>
   </div>
 
