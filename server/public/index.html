@@ -7,8 +7,8 @@
   <meta name="description" content="Shopee CPAS 广告回传监控面板 — 监控订单、访客点击以及 TikTok / Facebook 广告回调状态。">
   <meta name="robots" content="noindex, nofollow">
   <!-- Fonts: Rely purely on Apple System UI stack -->
-  <link rel="stylesheet" href="/ui/styles.css?v=20260404-0300" />
-  <script src="/ui/app.js?v=20260404-0300" defer></script>
+  <link rel="stylesheet" href="/ui/styles.css?v=20260404-2245" />
+  <script src="/ui/app.js?v=20260404-2245" defer></script>
 </head>
 <body class="aurora-theme">
   <!-- CSS Background Blur Orbs -->
@@ -28,7 +28,7 @@
               <path d="M2 12L12 17L22 12" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
             </svg>
           </div>
-          <h2 class="sidebar-title">系统后台</h2>
+          <span class="sidebar-title">系统后台</span>
         </div>
         <button id="toggleSidebarBtn" class="sidebar-toggle-btn" title="收起导航栏">
           <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>
@@ -85,7 +85,6 @@
 
     <!-- Main Workspace -->
     <main class="workspace">
-      <!-- Top Header -->
       <!-- Top Header -->
       <header class="topbar">
         
@@ -314,5 +313,19 @@
       </div>
     </section>
   </div>
+  <!-- Danger Confirmation Sub-Modal -->
+  <div id="dangerConfirmModal" hidden aria-modal="true" role="alertdialog"
+       aria-labelledby="dangerConfirmTitle" aria-describedby="dangerConfirmMessage">
+    <div class="danger-confirm-backdrop" id="dangerConfirmBackdrop"></div>
+    <div class="danger-confirm-panel">
+      <h3 class="danger-confirm-title" id="dangerConfirmTitle">确认操作</h3>
+      <p class="danger-confirm-message" id="dangerConfirmMessage"></p>
+      <div class="danger-confirm-actions">
+        <button id="dangerConfirmCancelBtn" class="btn btn-ghost">取消</button>
+        <button id="dangerConfirmOkBtn" class="btn btn-danger">确认执行</button>
+      </div>
+    </div>
+  </div>
+
 </body>
 </html>

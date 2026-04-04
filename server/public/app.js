@@ -1,6 +1,9 @@
 const TOKEN_STORAGE_KEY = 'shopee-cpas-api-token';
 const DEFAULT_LIMIT = 20;
 const DISPLAY_TIME_ZONE = 'Asia/Shanghai';
+const AUTO_REFRESH_MS = 60_000;
+let autoRefreshTimer = null;
+let currentRefreshController = null;
 
 function createEmptyBusinessData() {
   return {
@@ -40,6 +43,11 @@ const elements = {
   purgeAllConfirmHint: document.getElementById('purgeAllConfirmHint'),
   purgeAllConfirmInput: document.getElementById('purgeAllConfirmInput'),
   purgeAllDataBtn: document.getElementById('purgeAllDataBtn'),
+  dangerConfirmModal: document.getElementById('dangerConfirmModal'),
+  dangerConfirmBackdrop: document.getElementById('dangerConfirmBackdrop'),
+  dangerConfirmMessage: document.getElementById('dangerConfirmMessage'),
+  dangerConfirmCancelBtn: document.getElementById('dangerConfirmCancelBtn'),
+  dangerConfirmOkBtn: document.getElementById('dangerConfirmOkBtn'),
   authStatus: document.getElementById('authStatus'),
   lastUpdated: document.getElementById('lastUpdated'),
   healthPill: document.getElementById('healthPill'),
@@ -359,27 +367,27 @@ function renderStatusList(container, rows, emptyLabel) {
     return;
   }
 
-    const frag = document.createDocumentFragment();
-    const listDiv = document.createElement('div');
-    listDiv.className = 'status-list';
+  const frag = document.createDocumentFragment();
+  const listDiv = document.createElement('div');
+  listDiv.className = 'status-list';
 
-    rows.forEach((row) => {
-      const translated = translateStatus(row.status);
-      const itemDiv = document.createElement('div');
-      itemDiv.className = 'status-item';
-      itemDiv.innerHTML = `
-        <div class="status-item-left">
-          <strong>${escapeHtml(translated)}</strong>
-          <span>共 ${escapeHtml(row.count)} 条记录</span>
-        </div>
-        <span class="status-count">${escapeHtml(row.count)}</span>
-      `;
-      listDiv.appendChild(itemDiv);
-    });
+  rows.forEach((row) => {
+    const translated = translateStatus(row.status);
+    const itemDiv = document.createElement('div');
+    itemDiv.className = 'status-item';
+    itemDiv.innerHTML = `
+      <div class="status-item-left">
+        <strong>${escapeHtml(translated)}</strong>
+        <span>共 ${escapeHtml(row.count)} 条记录</span>
+      </div>
+      <span class="status-count">${escapeHtml(row.count)}</span>
+    `;
+    listDiv.appendChild(itemDiv);
+  });
 
-    frag.appendChild(listDiv);
-    container.innerHTML = '';
-    container.appendChild(frag);
+  frag.appendChild(listDiv);
+  container.innerHTML = '';
+  container.appendChild(frag);
 }
 
 function getCleanupLimits(system) {
@@ -606,20 +614,23 @@ function openCleanupModal() {
 
   if (elements.cleanupModal) {
     elements.cleanupModal.hidden = false;
-    
+
     const cleanupTabs = document.querySelectorAll('.cleanup-tab');
     const cleanupTabContents = document.querySelectorAll('.cleanup-tab-content');
     cleanupTabs.forEach(t => t.classList.remove('active'));
     cleanupTabContents.forEach(c => c.classList.remove('active'));
-    
+
     const defaultTab = document.querySelector('[data-target="cleanup-retention"]');
     const defaultContent = document.getElementById('cleanup-retention');
     if (defaultTab) defaultTab.classList.add('active');
     if (defaultContent) defaultContent.classList.add('active');
+
+    trapFocus(elements.cleanupModal, elements.openCleanupModalBtn);
   }
 }
 
 function closeCleanupModal() {
+  releaseFocus();
   if (elements.cleanupModal) {
     elements.cleanupModal.hidden = true;
   }
@@ -699,7 +710,7 @@ function renderTextDetail(value, emptyLabel = '-') {
       <summary>点击查看完整内容</summary>
       <div class="detail-content-wrap">
         <p>${escapeHtml(text)}</p>
-        <button class="btn-copy-float" data-text="${escapeHtml(text).replace(/"/g, '&quot;')}" onclick="copyToClipboard(this)" title="复制完整内容">
+        <button class="btn-copy-float" data-copy-text="${escapeHtml(text).replace(/"/g, '&quot;')}" title="复制完整内容">
           <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
         </button>
       </div>
@@ -707,8 +718,8 @@ function renderTextDetail(value, emptyLabel = '-') {
   `;
 }
 
-window.copyToClipboard = async function(btn) {
-  const text = btn.getAttribute('data-text');
+async function copyToClipboard(btn) {
+  const text = btn.getAttribute('data-copy-text');
   try {
     await navigator.clipboard.writeText(text);
     const originalHtml = btn.innerHTML;
@@ -721,7 +732,7 @@ window.copyToClipboard = async function(btn) {
   } catch(e) {
     console.error('Copy failed', e);
   }
-};
+}
 
 function renderReasonDetail(value, emptyLabel = '暂无说明') {
   const parts = parseReasonDetail(value);
@@ -772,16 +783,17 @@ function renderTable(container, columns, rows, emptyTitle, emptyMessage) {
   const feedList = document.createElement('div');
   feedList.className = 'feed-list';
 
-  rows.forEach((row) => {
+  rows.forEach((row, index) => {
     const card = document.createElement('div');
     card.className = 'feed-card';
+    card.style.animationDelay = `${index * 0.05}s`;
 
     const grid = document.createElement('div');
     grid.className = 'feed-grid';
 
     columns.forEach((column) => {
       const renderResult = column.render(row);
-      
+
       const item = document.createElement('div');
       item.className = 'feed-item';
       if (column.size === 'large') item.classList.add('feed-item-large');
@@ -825,7 +837,7 @@ function updateSystemDetail(system) {
 }
 
 async function requestJson(url, options = {}) {
-  const { token = '', method = 'GET', body } = options;
+  const { token = '', method = 'GET', body, signal } = options;
   const headers = {};
 
   if (token) {
@@ -840,6 +852,7 @@ async function requestJson(url, options = {}) {
     method,
     headers,
     body: body === undefined ? undefined : JSON.stringify(body),
+    signal,
   });
 
   const responseText = await response.text();
@@ -864,6 +877,54 @@ async function requestJson(url, options = {}) {
 
   return payload;
 }
+
+// ── Focus Trap ────────────────────────────────────────────────────────────
+let _focusTrapCleanup = null;
+let _focusTrapTrigger = null;
+
+function trapFocus(modalEl, triggerEl = null) {
+  _focusTrapTrigger = triggerEl;
+  const FOCUSABLE = 'button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])';
+  const getFocusable = () => Array.from(modalEl.querySelectorAll(FOCUSABLE));
+
+  function handler(e) {
+    if (e.key !== 'Tab') return;
+    const focusable = getFocusable();
+    if (focusable.length === 0) { e.preventDefault(); return; }
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (e.shiftKey) {
+      if (document.activeElement === first) { e.preventDefault(); last.focus(); }
+    } else {
+      if (document.activeElement === last) { e.preventDefault(); first.focus(); }
+    }
+  }
+
+  modalEl.addEventListener('keydown', handler);
+  _focusTrapCleanup = () => modalEl.removeEventListener('keydown', handler);
+  const focusable = getFocusable();
+  if (focusable.length > 0) focusable[0].focus();
+}
+
+function releaseFocus() {
+  if (_focusTrapCleanup) { _focusTrapCleanup(); _focusTrapCleanup = null; }
+  if (_focusTrapTrigger) { _focusTrapTrigger.focus(); _focusTrapTrigger = null; }
+}
+// ── End Focus Trap ────────────────────────────────────────────────────────────
+
+// ── Auto-Refresh ───────────────────────────────────────────────────────────
+function stopAutoRefresh() {
+  if (autoRefreshTimer !== null) {
+    clearInterval(autoRefreshTimer);
+    autoRefreshTimer = null;
+  }
+}
+
+function startAutoRefresh() {
+  stopAutoRefresh();
+  autoRefreshTimer = setInterval(refreshDashboard, AUTO_REFRESH_MS);
+}
+// ── End Auto-Refresh ───────────────────────────────────────────────────────────
 
 function bootstrapToken() {
   const token = readToken();
@@ -1109,6 +1170,182 @@ function renderCallbacks(container, rows, emptyTitle, emptyMessage) {
   container.appendChild(frag);
 }
 
+function renderMatches(container, rows, emptyTitle, emptyMessage) {
+  if (!rows || rows.length === 0) {
+    renderEmpty(container, emptyTitle, emptyMessage);
+    return;
+  }
+  const frag = document.createDocumentFragment();
+  const feedList = document.createElement('div');
+  feedList.className = 'match-list-grid';
+
+  rows.forEach((row, index) => {
+    const card = document.createElement('div');
+    card.className = 'match-ui-card glass-panel';
+    card.style.animationDelay = `${index * 0.05}s`;
+
+    const platformBadge = badge(row.platform, row.platform || '-');
+    const confidenceBadge = badge(row.confidence, translateStatus(row.confidence));
+    const scoreVal = row.match_score ?? '-';
+
+    card.innerHTML = `
+      <div class="match-hd">
+        <div class="m-point">
+          <span class="m-point-lbl">订单溯源 ID</span>
+          <span class="m-point-val mono">${escapeHtml(row.order_id)}</span>
+        </div>
+        <div class="m-connector">
+          <svg viewBox="0 0 24 24" width="16" height="16" style="opacity:0.5; color:var(--glow-cyan);" stroke="currentColor" fill="none" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>
+        </div>
+        <div class="m-point m-right">
+          <span class="m-point-lbl">访客归因</span>
+          <span class="m-point-val">${platformBadge}</span>
+        </div>
+      </div>
+      
+      <div class="match-bd">
+         <div class="m-score-hub">
+           <div class="m-metric">
+              <span class="m-metric-title">匹配分阀值</span>
+              <span class="m-metric-big mono">${scoreVal}</span>
+           </div>
+           <div class="m-metric">
+              <span class="m-metric-title">可信度侦测</span>
+              <div class="m-metric-badge" style="margin-top:2px;">${confidenceBadge}</div>
+           </div>
+           <div class="m-metric">
+              <span class="m-metric-title">点击时差</span>
+              <span class="m-metric-norm mono">${escapeHtml(row.time_diff_seconds)}<small>s</small></span>
+           </div>
+         </div>
+         
+         <div class="m-ident-row">
+            <span class="m-ident-lbl">追踪码 (Click ID):</span>
+            <span class="m-ident-val mono">${escapeHtml(row.click_id)}</span>
+         </div>
+         <div class="m-ident-row">
+            <span class="m-ident-lbl">快照时间:</span>
+            <span class="m-ident-val">${escapeHtml(formatDate(row.match_time))}</span>
+         </div>
+      </div>
+      
+      <div class="match-ft">
+        <span class="m-ft-title">底层命中证据连（Signals）</span>
+        ${renderTextDetail(translateReasonValue('signals', row.match_signals), '暂无详细证据链记录')}
+      </div>
+    `;
+
+    feedList.appendChild(card);
+  });
+
+  frag.appendChild(feedList);
+  container.innerHTML = '';
+  container.appendChild(frag);
+}
+
+function renderEvents(container, rows, emptyTitle, emptyMessage) {
+  if (!rows || rows.length === 0) {
+    renderEmpty(container, emptyTitle, emptyMessage);
+    return;
+  }
+  const frag = document.createDocumentFragment();
+  const feedList = document.createElement('div');
+  feedList.className = 'event-list-grid';
+
+  rows.forEach((row, index) => {
+    const card = document.createElement('div');
+    card.className = 'event-ui-card glass-panel';
+    card.style.animationDelay = `${index * 0.05}s`;
+
+    const statusBadge = badge(row.status);
+    
+    card.innerHTML = `
+      <div class="evt-hd">
+        <div class="evt-topic"><span class="mono" style="font-weight:700; color:var(--text-main); font-size:1rem;">${escapeHtml(row.topic)}</span></div>
+        <div class="evt-status">${statusBadge}</div>
+      </div>
+      <div class="evt-bd">
+        <div class="evt-row">
+          <span class="evt-lbl">提取订单戳:</span>
+          <span class="evt-val mono" style="color:var(--text-main);">${escapeHtml(row.shopify_order_id || '未能提取 / 无关事件')}</span>
+        </div>
+        <div class="evt-row">
+          <span class="evt-lbl">Shopify 握手签:</span>
+          <span class="evt-val mono">${escapeHtml(row.webhook_id)}</span>
+        </div>
+        <div class="evt-row">
+          <span class="evt-lbl">内部排查环:</span>
+          <span class="evt-val mono">${renderTextDetail(row.trace_id, '暂无')}</span>
+        </div>
+        <div class="evt-row">
+          <span class="evt-lbl">时间戳流:</span>
+          <span class="evt-val">${escapeHtml(formatDate(row.received_at))}</span>
+        </div>
+      </div>
+      ${row.error_message ? `
+      <div class="evt-ft error-zone">
+         <span class="evt-err-lbl">解包异样警示</span>
+         <div class="mono" style="color:var(--danger); font-size:0.8rem; word-break:break-all; margin-top:4px;">${escapeHtml(row.error_message)}</div>
+      </div>
+      ` : ''}
+    `;
+    feedList.appendChild(card);
+  });
+  frag.appendChild(feedList);
+  container.innerHTML = '';
+  container.appendChild(frag);
+}
+
+function renderVisitors(container, rows, emptyTitle, emptyMessage) {
+  if (!rows || rows.length === 0) {
+    renderEmpty(container, emptyTitle, emptyMessage);
+    return;
+  }
+  const frag = document.createDocumentFragment();
+  const feedList = document.createElement('div');
+  feedList.className = 'visitor-list-grid';
+
+  rows.forEach((row, index) => {
+    const card = document.createElement('div');
+    card.className = 'visitor-ui-card glass-panel';
+    card.style.animationDelay = `${index * 0.05}s`;
+
+    card.innerHTML = `
+      <div class="vis-hd">
+        <div class="vis-ip">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:8px; opacity:0.6;"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/></svg>
+          <span class="mono">${escapeHtml(row.ip || 'Unknown IP')}</span>
+        </div>
+        <div class="vis-time">${escapeHtml(formatDate(row.timestamp))}</div>
+      </div>
+      <div class="vis-tags">
+        <div class="v-tag-grp">
+           <span class="v-lbl">TTCLID</span>
+           <span class="v-val mono ${!row.ttclid ? 'muted' : ''}">${escapeHtml(row.ttclid || '未捕获')}</span>
+        </div>
+        <div class="v-tag-grp">
+           <span class="v-lbl">FBCLID</span>
+           <span class="v-val mono ${!row.fbclid ? 'muted' : ''}">${escapeHtml(row.fbclid || '未捕获')}</span>
+        </div>
+      </div>
+      <div class="vis-ft">
+        <div class="v-dev-row">
+           <span class="v-dev-lbl">触点池 (Product ID)</span>
+           <span class="v-dev-val mono">${escapeHtml(row.product_id || '未关联具体商品')}</span>
+        </div>
+        <div class="v-dev-ua">
+           <span class="v-dev-lbl" style="margin-bottom:4px; display:block;">终端指纹探测 (User Agent)</span>
+           <div class="ua-text">${escapeHtml(row.user_agent || '无设备解析')}</div>
+        </div>
+      </div>
+    `;
+    feedList.appendChild(card);
+  });
+  frag.appendChild(feedList);
+  container.innerHTML = '';
+  container.appendChild(frag);
+}
+
 function renderBusinessViews() {
   const stats = state.data.stats || { counts: {}, callbacks_by_status: [] };
   const orders = getFilteredRows(state.data.orders || [], 'orders');
@@ -1152,113 +1389,15 @@ function renderBusinessViews() {
       : '当前还没有发起过回调请求。'
   );
 
-  renderTable(
+  renderMatches(
     elements.matchesTable,
-    [
-      {
-        label: '订单号',
-        size: 'normal',
-        help: '被匹配的订单',
-        render: (row) => `<span class="mono">${escapeHtml(row.order_id)}</span>`,
-      },
-      {
-        label: '广告平台',
-        size: 'normal',
-        help: '匹配到的广告平台',
-        render: (row) => badge(row.platform, row.platform || '-'),
-      },
-      {
-        label: '匹配可信度',
-        size: 'normal',
-        help: '匹配是否可靠',
-        render: (row) => badge(row.confidence, translateStatus(row.confidence)),
-      },
-      {
-        label: '匹配分',
-        size: 'normal',
-        help: '分数越高，说明越像同一位访客',
-        render: (row) => `<span class="mono">${escapeHtml(row.match_score ?? '-')}</span>`,
-      },
-      {
-        label: '时间间隔',
-        size: 'normal',
-        help: '点击到下单过了多少秒',
-        render: (row) => `<span class="mono">${escapeHtml(row.time_diff_seconds)}s</span>`,
-      },
-      {
-        label: '匹配时间',
-        size: 'normal',
-        help: '匹配成功的时间',
-        render: (row) => escapeHtml(formatDate(row.match_time)),
-      },
-      {
-        label: '点击标识',
-        size: 'large',
-        help: '访客的点击 ID',
-        render: (row) => `<div class="mono wrap">${escapeHtml(row.click_id)}</div>`,
-      },
-      {
-        label: '命中信号',
-        size: 'full',
-        help: '系统是根据哪些证据判断匹配的',
-        render: (row) =>
-          renderTextDetail(
-            translateReasonValue('signals', row.match_signals),
-            '暂无命中信号'
-          ),
-      },
-    ],
     matches,
     '暂无匹配记录',
     '当前还没有任何订单匹配到广告点击。'
   );
 
-  renderTable(
+  renderEvents(
     elements.eventsTable,
-    [
-      {
-        label: '事件类型',
-        size: 'normal',
-        help: '收到什么类型的事件',
-        render: (row) => `<span class="mono">${escapeHtml(row.topic)}</span>`,
-      },
-      {
-        label: '相关订单号',
-        size: 'normal',
-        help: '此事件对应的订单',
-        render: (row) => `<span class="mono">${escapeHtml(row.shopify_order_id)}</span>`,
-      },
-      {
-        label: '处理状态',
-        size: 'normal',
-        help: '系统是否处理成功',
-        render: (row) => badge(row.status),
-      },
-      {
-        label: '接收时间',
-        size: 'normal',
-        help: '收到该请求的时间',
-        render: (row) => escapeHtml(formatDate(row.received_at)),
-      },
-      {
-        label: '事件编号',
-        size: 'large',
-        help: 'Shopify 事件 ID',
-        render: (row) => `<div class="mono wrap">${escapeHtml(row.webhook_id)}</div>`,
-      },
-      {
-        label: '排查编号',
-        size: 'large',
-        help: '可用来串联 webhook、订单和回调日志',
-        render: (row) => renderTextDetail(row.trace_id, '暂无编号'),
-      },
-      {
-        label: '报错提示',
-        size: 'full',
-        help: '如果未处理成功，这里会写原因',
-        render: (row) => row.error_message ? `<div class="wrap mono" style="color: var(--danger);">${escapeHtml(row.error_message)}</div>` : `<span class="muted">无报错</span>`,
-      },
-    ],
     events,
     '暂无 Webhook 事件',
     state.showOnlyFailures
@@ -1266,46 +1405,8 @@ function renderBusinessViews() {
       : '当前尚未收到 Shopify 推送任何事件。'
   );
 
-  renderTable(
+  renderVisitors(
     elements.visitorsTable,
-    [
-      {
-        label: '访问时间',
-        size: 'normal',
-        help: '访客到达的时间',
-        render: (row) => escapeHtml(formatDate(row.timestamp)),
-      },
-      {
-        label: '访客 IP',
-        size: 'normal',
-        help: '访问来源 IP 地址',
-        render: (row) => `<span class="mono">${escapeHtml(row.ip || '-')}</span>`,
-      },
-      {
-        label: 'TT 点击标识',
-        size: 'large',
-        help: 'TikTok 广告参数',
-        render: (row) => `<div class="mono wrap">${escapeHtml(row.ttclid || '-')}</div>`,
-      },
-      {
-        label: 'FB 点击标识',
-        size: 'large',
-        help: 'Facebook 广告参数',
-        render: (row) => `<div class="mono wrap">${escapeHtml(row.fbclid || '-')}</div>`,
-      },
-      {
-        label: '访问商品',
-        size: 'full',
-        help: '访客浏览的是哪个商品',
-        render: (row) => `<div class="wrap">${escapeHtml(row.product_id || '-')}</div>`,
-      },
-      {
-        label: '浏览器信息',
-        size: 'full',
-        help: '使用的设备或浏览器',
-        render: (row) => renderTextDetail(row.user_agent, '无设备信息'),
-      },
-    ],
     visitors,
     '暂无访客记录',
     '当前还没有带有广告参数的访客来访。'
@@ -1315,6 +1416,13 @@ function renderBusinessViews() {
 }
 
 async function refreshDashboard() {
+  // Abort any in-flight refresh to prevent race conditions
+  if (currentRefreshController) {
+    currentRefreshController.abort();
+  }
+  currentRefreshController = new AbortController();
+  const { signal } = currentRefreshController;
+
   const token = readToken();
   elements.refreshBtn.disabled = true;
   elements.refreshBtn.classList.add('is-refreshing');
@@ -1322,15 +1430,20 @@ async function refreshDashboard() {
   setAuthStatus('正在加载数据...', 'warning');
 
   try {
-    const health = await requestJson(endpointConfig.health);
+    const health = await requestJson(endpointConfig.health, { signal });
     updateHealth(health);
   } catch (error) {
+    if (error.name === 'AbortError') {
+      currentRefreshController = null;
+      return;
+    }
     elements.healthPill.className = 'health-pill pulse-danger';
     elements.healthStatusText.textContent = '无法连接后台';
     setAuthStatus(`后台服务未响应：${error.message}`, 'danger');
     elements.refreshBtn.disabled = false;
     elements.refreshBtn.classList.remove('is-refreshing');
     if (elements.scrollCanvas) elements.scrollCanvas.classList.remove('is-refreshing-data');
+    currentRefreshController = null;
     return;
   }
 
@@ -1344,36 +1457,33 @@ async function refreshDashboard() {
     elements.refreshBtn.disabled = false;
     elements.refreshBtn.classList.remove('is-refreshing');
     if (elements.scrollCanvas) elements.scrollCanvas.classList.remove('is-refreshing-data');
+    currentRefreshController = null;
     return;
   }
 
   try {
     const [system, stats, orders, callbacks, matches, events, visitors] =
       await Promise.all([
-        requestJson(endpointConfig.system, { token }),
-        requestJson(endpointConfig.stats, { token }),
-        requestJson(endpointConfig.orders, { token }),
-        requestJson(endpointConfig.callbacks, { token }),
-        requestJson(endpointConfig.matches, { token }),
-        requestJson(endpointConfig.events, { token }),
-        requestJson(endpointConfig.visitors, { token }),
+        requestJson(endpointConfig.system, { token, signal }),
+        requestJson(endpointConfig.stats, { token, signal }),
+        requestJson(endpointConfig.orders, { token, signal }),
+        requestJson(endpointConfig.callbacks, { token, signal }),
+        requestJson(endpointConfig.matches, { token, signal }),
+        requestJson(endpointConfig.events, { token, signal }),
+        requestJson(endpointConfig.visitors, { token, signal }),
       ]);
 
-    state.data = {
-      system,
-      stats,
-      orders,
-      callbacks,
-      matches,
-      events,
-      visitors,
-    };
-
+    state.data = { system, stats, orders, callbacks, matches, events, visitors };
     updateSystemDetail(system);
     renderBusinessViews();
     elements.authModule.classList.add('is-authorized');
     setAuthStatus('数据已全部刷新成功。', 'success');
+    startAutoRefresh();
   } catch (error) {
+    if (error.name === 'AbortError') {
+      currentRefreshController = null;
+      return;
+    }
     elements.authModule.classList.remove('is-authorized');
     clearBusinessViews('由于令牌错误或网络问题，读取数据失败。');
     updateFilterUi();
@@ -1382,11 +1492,12 @@ async function refreshDashboard() {
     elements.refreshBtn.disabled = false;
     elements.refreshBtn.classList.remove('is-refreshing');
     if (elements.scrollCanvas) elements.scrollCanvas.classList.remove('is-refreshing-data');
+    currentRefreshController = null;
   }
 }
 
 async function handleRetryOrder(orderId, button) {
-  const token = elements.tokenInput.value.trim();
+  const token = readToken();
   if (!token) {
     setAuthStatus('请先输入有效令牌，再进行手动重试。', 'warning');
     return;
@@ -1455,7 +1566,7 @@ function summarizeCleanupResult(result) {
 }
 
 async function handleCleanupOldData(button) {
-  const token = elements.tokenInput.value.trim();
+  const token = readToken();
   if (!token) {
     setAuthStatus('请先输入有效令牌，再执行旧数据清理。', 'warning');
     return;
@@ -1474,41 +1585,39 @@ async function handleCleanupOldData(button) {
     `本次将保留最近 ${cleanupDays.visitorDays} 天访客数据，以及最近 ${cleanupDays.businessDays} 天订单和日志数据。\n\n` +
     '这一步会永久删除超出保留期的历史数据，不能撤销。';
 
-  if (!window.confirm(confirmText)) {
+  openDangerConfirm(confirmText, async () => {
+    const originalText = button.textContent;
+    button.disabled = true;
+    button.textContent = '清理中...';
+    setAuthStatus('正在清理旧数据，请稍候...', 'warning');
+
+    try {
+      const payload = await requestJson(endpointConfig.cleanupOldData, {
+        token,
+        method: 'POST',
+        body: {
+          confirm: true,
+          visitorRetentionDays: cleanupDays.visitorDays,
+          businessRetentionDays: cleanupDays.businessDays,
+        },
+      });
+      const summary = summarizeCleanupResult(payload?.result);
+      await refreshDashboard();
+      closeCleanupModal();
+      setAuthStatus(summary.text, summary.tone);
+    } catch (error) {
+      setAuthStatus(`清理旧数据失败：${error.message}`, 'danger');
+    } finally {
+      button.disabled = false;
+      button.textContent = originalText;
+    }
+  }, () => {
     setAuthStatus('已取消旧数据清理。', 'warning');
-    return;
-  }
-
-  const originalText = button.textContent;
-  button.disabled = true;
-  button.textContent = '清理中...';
-  setAuthStatus('正在清理旧数据，请稍候...', 'warning');
-
-  try {
-    const payload = await requestJson(endpointConfig.cleanupOldData, {
-      token,
-      method: 'POST',
-      body: {
-        confirm: true,
-        visitorRetentionDays: cleanupDays.visitorDays,
-        businessRetentionDays: cleanupDays.businessDays,
-      },
-    });
-    const summary = summarizeCleanupResult(payload?.result);
-
-    await refreshDashboard();
-    closeCleanupModal();
-    setAuthStatus(summary.text, summary.tone);
-  } catch (error) {
-    setAuthStatus(`清理旧数据失败：${error.message}`, 'danger');
-  } finally {
-    button.disabled = false;
-    button.textContent = originalText;
-  }
+  });
 }
 
 async function handlePurgeAllData(button) {
-  const token = elements.tokenInput.value.trim();
+  const token = readToken();
   if (!token) {
     setAuthStatus('请先输入有效令牌，再执行清空全部数据。', 'warning');
     return;
@@ -1524,47 +1633,74 @@ async function handlePurgeAllData(button) {
   const confirmMessage =
     '这是高风险操作。\n\n' +
     '执行后会清空全部访客、订单、匹配、回传和 Webhook 记录，且不能恢复。\n\n' +
-    '如果你确认要继续，请点击“确定”。';
-  if (!window.confirm(confirmMessage)) {
-    setAuthStatus('已取消清空全部数据。', 'warning');
-    return;
-  }
+    '如果你确认要继续，请点击“确认执行”。';
 
-  const originalText = button.textContent;
-  button.disabled = true;
-  button.textContent = '清空中...';
-  setAuthStatus('正在清空全部数据，请稍候...', 'warning');
+  openDangerConfirm(confirmMessage, async () => {
+    const originalText = button.textContent;
+    button.disabled = true;
+    button.textContent = '清空中...';
+    setAuthStatus('正在清空全部数据，请稍候...', 'warning');
 
-  try {
-    const payload = await requestJson(endpointConfig.purgeAllData, {
-      token,
-      method: 'POST',
-      body: {
-        confirm: true,
-        confirmText,
-      },
-    });
-    const summary = summarizeCleanupResult(payload?.result);
+    try {
+      const payload = await requestJson(endpointConfig.purgeAllData, {
+        token,
+        method: 'POST',
+        body: { confirm: true, confirmText },
+      });
+      const summary = summarizeCleanupResult(payload?.result);
 
-    state.cleanupInputsDirty = false;
-    if (elements.purgeAllConfirmInput) {
-      elements.purgeAllConfirmInput.value = '';
+      state.cleanupInputsDirty = false;
+      if (elements.purgeAllConfirmInput) {
+        elements.purgeAllConfirmInput.value = '';
+      }
+
+      await refreshDashboard();
+      closeCleanupModal();
+      setAuthStatus(
+        summary.total === 0 ? '数据库已经是空的，无需再次清空。' : summary.text,
+        'success'
+      );
+    } catch (error) {
+      setAuthStatus(`清空全部数据失败：${error.message}`, 'danger');
+    } finally {
+      button.disabled = false;
+      button.textContent = originalText;
+      updatePurgeAllUi(state.data.system);
     }
-
-    await refreshDashboard();
-    closeCleanupModal();
-    setAuthStatus(
-      summary.total === 0 ? '数据库已经是空的，无需再次清空。' : summary.text,
-      'success'
-    );
-  } catch (error) {
-    setAuthStatus(`清空全部数据失败：${error.message}`, 'danger');
-  } finally {
-    button.disabled = false;
-    button.textContent = originalText;
-    updatePurgeAllUi(state.data.system);
-  }
+  }, () => {
+    setAuthStatus('已取消清空全部数据。', 'warning');
+  });
 }
+
+// ── Danger Confirm Modal ───────────────────────────────────────────────────────────
+function closeDangerConfirm() {
+  if (!elements.dangerConfirmModal) return;
+  elements.dangerConfirmModal.hidden = true;
+  releaseFocus();
+}
+
+function openDangerConfirm(message, onConfirm, onCancel) {
+  if (!elements.dangerConfirmModal) return;
+  elements.dangerConfirmMessage.textContent = message;
+  elements.dangerConfirmModal.hidden = false;
+  trapFocus(elements.dangerConfirmModal, null);
+
+  elements.dangerConfirmOkBtn.addEventListener('click', () => {
+    closeDangerConfirm();
+    onConfirm();
+  }, { once: true });
+
+  elements.dangerConfirmCancelBtn.addEventListener('click', () => {
+    closeDangerConfirm();
+    if (onCancel) onCancel();
+  }, { once: true });
+
+  elements.dangerConfirmBackdrop.addEventListener('click', () => {
+    closeDangerConfirm();
+    if (onCancel) onCancel();
+  }, { once: true });
+}
+// ── End Danger Confirm Modal ───────────────────────────────────────────────────────────
 
 function bindEvents() {
   if (elements.toggleSidebarBtn && elements.sidebar) {
@@ -1597,6 +1733,7 @@ function bindEvents() {
   });
 
   elements.clearTokenBtn.addEventListener('click', () => {
+    stopAutoRefresh();
     elements.tokenInput.value = '';
     writeToken('');
     state.data = createEmptyBusinessData();
@@ -1714,8 +1851,13 @@ function bindEvents() {
     if (!button) {
       return;
     }
-
     handleRetryOrder(button.dataset.orderId, button);
+  });
+
+  // Issue #1 fix: event delegation for copy buttons (replaces global window.copyToClipboard + onclick)
+  document.addEventListener('click', (event) => {
+    const btn = event.target.closest('.btn-copy-float');
+    if (btn) copyToClipboard(btn);
   });
 
   const navItems = document.querySelectorAll('.nav-item');
@@ -1763,8 +1905,14 @@ function bindEvents() {
   window.addEventListener('hashchange', handleRoute);
 
   document.addEventListener('keydown', (event) => {
-    if (event.key === 'Escape' && elements.cleanupModal && !elements.cleanupModal.hidden) {
-      closeCleanupModal();
+    if (event.key === 'Escape') {
+      if (elements.dangerConfirmModal && !elements.dangerConfirmModal.hidden) {
+        closeDangerConfirm();
+        return;
+      }
+      if (elements.cleanupModal && !elements.cleanupModal.hidden) {
+        closeCleanupModal();
+      }
     }
   });
 
@@ -1773,4 +1921,5 @@ function bindEvents() {
 
 bootstrapToken();
 bindEvents();
+window.addEventListener('beforeunload', stopAutoRefresh);
 refreshDashboard();

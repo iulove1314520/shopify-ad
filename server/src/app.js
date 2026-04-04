@@ -85,6 +85,7 @@ function createApp() {
   app.use('/webhook', webhookRouter);
   app.use(express.json({ limit: '1mb' }));
   app.use('/api', apiRouter);
+  app.get('/', (req, res) => res.redirect(301, '/ui'));
   app.get('/ui', (req, res) => {
     uiStaticOptions.setHeaders(res);
     res.sendFile(path.join(publicDir, 'index.html'));
