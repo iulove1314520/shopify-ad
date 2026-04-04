@@ -9,14 +9,75 @@ const {
   createFailureResult,
 } = require('./callback-utils');
 
-async function sendToFacebook(order, fbclid) {
+async function sendToFacebook(order, fbclid, callbackContext = {}) {
+  const visitor = callbackContext?.visitor || null;
+
+  let payload = {};
+  try {
+    payload = JSON.parse(order?.raw_payload || '{}');
+    if (!payload || typeof payload !== 'object') payload = {};
+  } catch (_e) {
+    payload = {};
+  }
+
+  const clientDetails = payload?.client_details || {};
+  const eventTimestamp = Math.floor(
+    new Date(order.created_at).getTime() / 1000
+  );
+
+  // 从访客或订单 payload 中提取 IP 和 User-Agent（提升 Meta 匹配率）
+  const clientIp = (
+    visitor?.ip ||
+    payload?.browser_ip ||
+    clientDetails?.browser_ip ||
+    ''
+  ).trim();
+  const clientUserAgent = (
+    visitor?.user_agent ||
+    clientDetails?.user_agent ||
+    ''
+  ).trim();
+
+  // 构建 user_data
+  const userData = { fbc: fbclid };
+  if (clientIp) userData.client_ip_address = clientIp;
+  if (clientUserAgent) userData.client_user_agent = clientUserAgent;
+
+  // 构建 contents（产品级归因数据）
+  const lineItems = Array.isArray(payload?.line_items)
+    ? payload.line_items
+    : [];
+  const contents = lineItems
+    .slice(0, 10)
+    .map((item) => ({
+      id: String(item?.product_id || item?.variant_id || item?.sku || ''),
+      quantity: Number(item?.quantity || 1),
+      item_price: Number(item?.price || 0),
+    }))
+    .filter((c) => c.id);
+
+  const customData = {
+    currency: order.currency,
+    value: Number(order.total_price || 0),
+  };
+  if (contents.length > 0) {
+    customData.contents = contents;
+    customData.content_type = 'product';
+  }
+
+  const eventId = `order_${order.shopify_order_id}`;
+
   const requestSummary = summarize({
     orderId: order.shopify_order_id,
     pixelId: env.facebookPixelId,
     event: 'Purchase',
+    eventId,
     currency: order.currency,
     value: Number(order.total_price || 0),
     clickId: maskValue(fbclid),
+    hasIp: Boolean(clientIp),
+    hasUserAgent: Boolean(clientUserAgent),
+    contentCount: contents.length,
   });
 
   if (!env.facebookPixelId || !env.facebookAccessToken) {
@@ -35,15 +96,13 @@ async function sendToFacebook(order, fbclid) {
         data: [
           {
             event_name: 'Purchase',
-            event_time: Math.floor(new Date(order.created_at).getTime() / 1000),
+            event_id: eventId,
+            event_time: Number.isFinite(eventTimestamp)
+              ? eventTimestamp
+              : Math.floor(Date.now() / 1000),
             action_source: 'website',
-            user_data: {
-              fbc: fbclid,
-            },
-            custom_data: {
-              currency: order.currency,
-              value: Number(order.total_price || 0),
-            },
+            user_data: userData,
+            custom_data: customData,
           },
         ],
         access_token: env.facebookAccessToken,

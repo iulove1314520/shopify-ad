@@ -7,11 +7,27 @@ const CLEANUP_RETENTION_MIN_DAYS = 1;
 const CLEANUP_RETENTION_MAX_DAYS = 3650;
 const PURGE_ALL_CONFIRM_TEXT = '清空全部数据';
 
+const VALID_TABLE_NAMES = new Set([
+  'visitors',
+  'orders',
+  'matches',
+  'callbacks',
+  'webhook_events',
+]);
+
+function assertTableName(name) {
+  if (!VALID_TABLE_NAMES.has(name)) {
+    throw new Error(`Invalid table name: ${name}`);
+  }
+}
+
 function countTable(tableName) {
+  assertTableName(tableName);
   return db.prepare(`SELECT COUNT(*) AS count FROM ${tableName}`).get().count;
 }
 
 function summarizeByStatus(tableName) {
+  assertTableName(tableName);
   return db
     .prepare(
       `

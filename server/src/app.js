@@ -49,7 +49,8 @@ function createApp() {
   };
 
   app.disable('x-powered-by');
-  app.set('trust proxy', true);
+  // 只信任第一层代理（Nginx / Docker 内网），防止攻击者通过 X-Forwarded-For 伪造 IP
+  app.set('trust proxy', 1);
   app.use(attachRequestContext);
   app.use(requestLogger);
 
@@ -72,6 +73,12 @@ function createApp() {
       res.header('Access-Control-Allow-Origin', origin);
     }
 
+    // 安全头：限制资源加载来源，降低 XSS 攻击面
+    res.header(
+      'Content-Security-Policy',
+      "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'"
+    );
+
     if (req.method === 'OPTIONS') {
       res.sendStatus(204);
       return;
@@ -83,7 +90,8 @@ function createApp() {
   app.get('/health', getHealth);
 
   app.use('/webhook', webhookRouter);
-  app.use(express.json({ limit: '1mb' }));
+  // Webhook 使用独立的 express.raw({ limit: '1mb' })，此处只影响 API 路由
+  app.use(express.json({ limit: '100kb' }));
   app.use('/api', apiRouter);
   app.get('/', (req, res) => res.redirect(301, '/ui'));
   app.get('/ui', (req, res) => {

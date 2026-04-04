@@ -63,8 +63,6 @@ function handleVisitor(req, res, next) {
       userAgent
     );
 
-    pruneVisitors();
-
     res.json({ success: true });
   } catch (error) {
     next(error);
@@ -101,4 +99,5 @@ function listVisitors(req, res, next) {
 module.exports = {
   handleVisitor,
   listVisitors,
+  pruneVisitors,
 };

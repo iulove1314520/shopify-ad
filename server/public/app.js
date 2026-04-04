@@ -773,48 +773,7 @@ function renderReasonDetail(value, emptyLabel = '暂无说明') {
   `;
 }
 
-function renderTable(container, columns, rows, emptyTitle, emptyMessage) {
-  if (!rows || rows.length === 0) {
-    renderEmpty(container, emptyTitle, emptyMessage);
-    return;
-  }
 
-  const frag = document.createDocumentFragment();
-  const feedList = document.createElement('div');
-  feedList.className = 'feed-list';
-
-  rows.forEach((row, index) => {
-    const card = document.createElement('div');
-    card.className = 'feed-card';
-    card.style.animationDelay = `${index * 0.05}s`;
-
-    const grid = document.createElement('div');
-    grid.className = 'feed-grid';
-
-    columns.forEach((column) => {
-      const renderResult = column.render(row);
-
-      const item = document.createElement('div');
-      item.className = 'feed-item';
-      if (column.size === 'large') item.classList.add('feed-item-large');
-      if (column.size === 'full') item.classList.add('feed-item-full');
-      if (column.size === 'action') item.classList.add('feed-item-action');
-
-      item.innerHTML = `
-        <span class="feed-label" title="${escapeHtml(column.help)}">${escapeHtml(column.label)}</span>
-        <div class="feed-value">${renderResult}</div>
-      `;
-      grid.appendChild(item);
-    });
-
-    card.appendChild(grid);
-    feedList.appendChild(card);
-  });
-  
-  frag.appendChild(feedList);
-  container.innerHTML = '';
-  container.appendChild(frag);
-}
 
 function updateHealth(health) {
   const isHealthy = Boolean(health?.ok);
@@ -1673,14 +1632,28 @@ async function handlePurgeAllData(button) {
 }
 
 // ── Danger Confirm Modal ───────────────────────────────────────────────────────────
+let _dangerConfirmAbort = null;
+
 function closeDangerConfirm() {
   if (!elements.dangerConfirmModal) return;
   elements.dangerConfirmModal.hidden = true;
+  if (_dangerConfirmAbort) {
+    _dangerConfirmAbort.abort();
+    _dangerConfirmAbort = null;
+  }
   releaseFocus();
 }
 
 function openDangerConfirm(message, onConfirm, onCancel) {
   if (!elements.dangerConfirmModal) return;
+
+  // 清理上一轮可能残留的监听器
+  if (_dangerConfirmAbort) {
+    _dangerConfirmAbort.abort();
+  }
+  _dangerConfirmAbort = new AbortController();
+  const { signal } = _dangerConfirmAbort;
+
   elements.dangerConfirmMessage.textContent = message;
   elements.dangerConfirmModal.hidden = false;
   trapFocus(elements.dangerConfirmModal, null);
@@ -1688,17 +1661,17 @@ function openDangerConfirm(message, onConfirm, onCancel) {
   elements.dangerConfirmOkBtn.addEventListener('click', () => {
     closeDangerConfirm();
     onConfirm();
-  }, { once: true });
+  }, { signal });
 
   elements.dangerConfirmCancelBtn.addEventListener('click', () => {
     closeDangerConfirm();
     if (onCancel) onCancel();
-  }, { once: true });
+  }, { signal });
 
   elements.dangerConfirmBackdrop.addEventListener('click', () => {
     closeDangerConfirm();
     if (onCancel) onCancel();
-  }, { once: true });
+  }, { signal });
 }
 // ── End Danger Confirm Modal ───────────────────────────────────────────────────────────
 

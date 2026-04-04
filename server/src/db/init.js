@@ -3,7 +3,18 @@ const path = require('node:path');
 
 const { db } = require('./client');
 
+const VALID_TABLE_NAMES = new Set([
+  'visitors',
+  'orders',
+  'matches',
+  'callbacks',
+  'webhook_events',
+]);
+
 function hasColumn(tableName, columnName) {
+  if (!VALID_TABLE_NAMES.has(tableName)) {
+    throw new Error(`Invalid table name: ${tableName}`);
+  }
   return db
     .prepare(`PRAGMA table_info(${tableName})`)
     .all()

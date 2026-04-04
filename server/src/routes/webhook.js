@@ -79,6 +79,28 @@ router.post(
           shopifyOrderId: String(order.id || ''),
         })
       );
+
+      // 保底: 尝试将 webhook_event 标记为 failed，防止状态卡在 received
+      try {
+        const webhookId =
+          String(req.headers['x-shopify-webhook-id'] || '').trim();
+        if (webhookId) {
+          const { db: dbClient } = require('../db/client');
+          dbClient
+            .prepare(
+              `UPDATE webhook_events SET status = 'failed', error_message = ?, processed_at = ? WHERE webhook_id = ? AND status <> 'processed'`
+            )
+            .run(
+              String(error.message || '').slice(0, 300),
+              new Date().toISOString(),
+              webhookId
+            );
+        }
+      } catch (dbError) {
+        logError('webhook.save_failure_failed', {
+          message: dbError.message,
+        });
+      }
     });
   }
 );
