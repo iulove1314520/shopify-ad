@@ -1443,6 +1443,7 @@ async function refreshDashboard() {
       currentRefreshController = null;
       return;
     }
+    state.data = createEmptyBusinessData();
     elements.authModule.classList.remove('is-authorized');
     clearBusinessViews('由于令牌错误或网络问题，读取数据失败。');
     updateFilterUi();

@@ -215,6 +215,9 @@ function loadDashboardApp(options = {}) {
   const {
     storedToken = '',
     intl = Intl,
+    fetchImpl = async () => {
+      throw new Error('Unexpected fetch in frontend unit test');
+    },
   } = options;
   const document = new FakeDocument();
 
@@ -298,11 +301,20 @@ function loadDashboardApp(options = {}) {
     document,
     Intl: intl,
     Date,
-    fetch: async () => {
-      throw new Error('Unexpected fetch in frontend unit test');
+    fetch: fetchImpl,
+    AbortController: class AbortController {
+      constructor() {
+        this.signal = { aborted: false };
+      }
+
+      abort() {
+        this.signal.aborted = true;
+      }
     },
     setTimeout: () => 0,
     clearTimeout() {},
+    setInterval: () => 0,
+    clearInterval() {},
     navigator: {
       clipboard: {
         async writeText() {},
@@ -320,10 +332,13 @@ function loadDashboardApp(options = {}) {
 
   const source = fs
     .readFileSync(APP_PATH, 'utf8')
-    .replace(/\nbootstrapToken\(\);\nbindEvents\(\);\nrefreshDashboard\(\);\s*$/, '\n')
+    .replace(
+      /\nbootstrapToken\(\);\nbindEvents\(\);\nwindow\.addEventListener\('beforeunload', stopAutoRefresh\);\nrefreshDashboard\(\);\s*$/,
+      '\n'
+    )
     .concat(
       '\n' +
-        'globalThis.__app = {' +
+      'globalThis.__app = {' +
         ' state,' +
         ' elements,' +
         ' formatDate,' +
@@ -331,7 +346,8 @@ function loadDashboardApp(options = {}) {
         ' writeToken,' +
         ' getFilteredRows,' +
         ' bindEvents,' +
-        ' bootstrapToken' +
+        ' bootstrapToken,' +
+        ' refreshDashboard' +
         '};\n'
     );
 
@@ -429,4 +445,51 @@ test('formatDate 会显式固定为北京时间格式化', () => {
   assert.equal(app.formatDate('2026-04-04T00:30:00.000Z'), 'formatted');
   assert.equal(capturedOptions.locale, 'zh-CN');
   assert.equal(capturedOptions.timeZone, 'Asia/Shanghai');
+});
+
+test('鉴权失败时会清空旧业务数据，避免页面再次渲染旧结果', async () => {
+  function createJsonResponse(status, payload) {
+    return {
+      ok: status >= 200 && status < 300,
+      status,
+      async text() {
+        return JSON.stringify(payload);
+      },
+    };
+  }
+
+  const { app } = loadDashboardApp({
+    storedToken: 'demo-token',
+    fetchImpl: async (url) => {
+      if (url === '/health') {
+        return createJsonResponse(200, {
+          ok: true,
+          environment: 'production',
+        });
+      }
+
+      return createJsonResponse(401, {
+        error: 'Unauthorized',
+      });
+    },
+  });
+
+  app.state.data = {
+    system: { environment: 'production' },
+    stats: { counts: { orders: 2 } },
+    orders: [{ order_id: 'SO-1001', status: 'callback_failed' }],
+    callbacks: [{ order_id: 'SO-1001', status: 'failed' }],
+    matches: [{ order_id: 'SO-1001' }],
+    events: [{ webhook_id: 'WH-1001', status: 'failed' }],
+    visitors: [{ ip: '203.0.113.10' }],
+  };
+  app.elements.authModule.classList.add('is-authorized');
+
+  await app.refreshDashboard();
+
+  assert.equal(
+    JSON.stringify(app.state.data),
+    JSON.stringify(createEmptyDashboardData())
+  );
+  assert.equal(app.elements.authModule.classList.contains('is-authorized'), false);
 });

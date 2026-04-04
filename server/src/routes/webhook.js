@@ -24,7 +24,7 @@ router.post(
   '/orders',
   webhookRateLimiter,
   express.raw({ type: 'application/json', limit: '1mb' }),
-  (req, res) => {
+  async (req, res, next) => {
     const traceId = getTraceId(req);
 
     if (!env.shopifyWebhookSecret) {
@@ -64,14 +64,16 @@ router.post(
       return;
     }
 
-    res.status(200).send('ok');
+    try {
+      await processOrderWebhook({
+        order,
+        rawBody,
+        headers: req.headers,
+        traceId,
+      });
 
-    processOrderWebhook({
-      order,
-      rawBody,
-      headers: req.headers,
-      traceId,
-    }).catch((error) => {
+      res.status(200).send('ok');
+    } catch (error) {
       logError(
         'webhook.processing_failed',
         withTraceId(traceId, {
@@ -101,7 +103,9 @@ router.post(
           message: dbError.message,
         });
       }
-    });
+
+      next(error);
+    }
   }
 );
 
