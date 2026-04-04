@@ -684,7 +684,7 @@ function renderTextDetail(value, emptyLabel = '-') {
   }
 
   const text = String(value);
-  if (text.length <= 90) {
+  if (text.length <= 50) {
     return `<div class="wrap mono">${escapeHtml(text)}</div>`;
   }
 
@@ -775,13 +775,12 @@ function renderTable(container, columns, rows, emptyTitle, emptyMessage) {
 
     columns.forEach((column) => {
       const renderResult = column.render(row);
-      const isAction = column.label === '操作';
-      const isReason = column.label === '失败原因' || column.label === '报错提示' || column.label === '报错详情';
       
       const item = document.createElement('div');
       item.className = 'feed-item';
-      if (isAction) item.classList.add('feed-action');
-      if (isReason) item.classList.add('feed-reason');
+      if (column.size === 'large') item.classList.add('feed-item-large');
+      if (column.size === 'full') item.classList.add('feed-item-full');
+      if (column.size === 'action') item.classList.add('feed-item-action');
 
       item.innerHTML = `
         <span class="feed-label" title="${escapeHtml(column.help)}">${escapeHtml(column.label)}</span>
@@ -984,43 +983,51 @@ function renderBusinessViews() {
     [
       {
         label: '订单号',
+        size: 'normal',
         help: 'Shopify 订单编号',
         render: (row) => `<span class="mono">${escapeHtml(row.order_id)}</span>`,
       },
       {
         label: '处理状态',
+        size: 'normal',
         help: '该订单当前的状态',
         render: (row) => badge(row.status),
       },
       {
-        label: '排查编号',
-        help: '需要找开发排查时，可把这个编号发给他',
-        render: (row) => renderTextDetail(row.trace_id, '暂无编号'),
-      },
-      {
-        label: '失败原因',
-        help: '如果处理不顺利，这里会写原因',
-        render: (row) => renderReasonDetail(row.status_reason, '暂无错误原因'),
-      },
-      {
         label: '订单金额',
+        size: 'normal',
         help: '订单金额和币种',
         render: (row) =>
           `<span class="mono">${escapeHtml(row.total_price)} ${escapeHtml(row.currency)}</span>`,
       },
       {
         label: '支付状态',
+        size: 'normal',
         help: '订单是否已付款',
         render: (row) =>
           `<span class="muted">${escapeHtml(translateStatus(row.financial_status) || row.financial_status || '-')}</span>`,
       },
       {
         label: '接收时间',
+        size: 'normal',
         help: '后台收到订单的时间',
         render: (row) => escapeHtml(formatDate(row.created_at)),
       },
       {
+        label: '排查编号',
+        size: 'large',
+        help: '需要找开发排查时，可把这个编号发给他',
+        render: (row) => renderTextDetail(row.trace_id, '暂无编号'),
+      },
+      {
+        label: '失败原因',
+        size: 'full',
+        help: '如果处理不顺利，这里会写原因',
+        render: (row) => renderReasonDetail(row.status_reason, '暂无错误原因'),
+      },
+      {
         label: '操作',
+        size: 'action',
         help: '必要时可手动重试匹配和回传',
         render: (row) =>
           canRetryOrder(row)
@@ -1051,16 +1058,25 @@ function renderBusinessViews() {
     [
       {
         label: '订单号',
+        size: 'normal',
         help: '关联的订单号',
         render: (row) => `<span class="mono">${escapeHtml(row.order_id)}</span>`,
       },
       {
+        label: '发送结果',
+        size: 'normal',
+        help: '成功、失败还是已跳过',
+        render: (row) => badge(row.status),
+      },
+      {
         label: '广告平台',
+        size: 'normal',
         help: '发送给哪个平台',
         render: (row) => badge(row.platform, row.platform || '-'),
       },
       {
         label: '触发来源',
+        size: 'normal',
         help: '是 webhook 自动触发还是人工重试',
         render: (row) =>
           badge(
@@ -1069,34 +1085,34 @@ function renderBusinessViews() {
           ),
       },
       {
-        label: '排查编号',
-        help: '同一次处理链路的统一编号',
-        render: (row) => renderTextDetail(row.trace_id, '暂无编号'),
-      },
-      {
-        label: '发送结果',
-        help: '成功、失败还是已跳过',
-        render: (row) => badge(row.status),
-      },
-      {
         label: '尝试次数',
+        size: 'normal',
         help: '这是第几次发送',
         render: (row) => `<span class="mono">${escapeHtml(row.attempt_number || '-')}</span>`,
       },
       {
+        label: '发送时间',
+        size: 'normal',
+        help: '回传请求发送的时间',
+        render: (row) => escapeHtml(formatDate(row.callback_time)),
+      },
+      {
+        label: '排查编号',
+        size: 'large',
+        help: '同一次处理链路的统一编号',
+        render: (row) => renderTextDetail(row.trace_id, '暂无编号'),
+      },
+      {
         label: '平台返回值',
+        size: 'full',
         help: '接口返回的主要内容',
         render: (row) => renderTextDetail(row.response_summary, '无返回值'),
       },
       {
         label: '报错详情',
+        size: 'full',
         help: '发送失败的具体原因',
-        render: (row) => renderTextDetail(row.error_message, '无报错'),
-      },
-      {
-        label: '发送时间',
-        help: '回传请求发送的时间',
-        render: (row) => escapeHtml(formatDate(row.callback_time)),
+        render: (row) => row.error_message ? `<div class="wrap mono" style="color: var(--danger);">${escapeHtml(row.error_message)}</div>` : `<span class="muted">无报错</span>`,
       },
     ],
     callbacks,
@@ -1111,47 +1127,55 @@ function renderBusinessViews() {
     [
       {
         label: '订单号',
+        size: 'normal',
         help: '被匹配的订单',
         render: (row) => `<span class="mono">${escapeHtml(row.order_id)}</span>`,
       },
       {
         label: '广告平台',
+        size: 'normal',
         help: '匹配到的广告平台',
         render: (row) => badge(row.platform, row.platform || '-'),
       },
       {
-        label: '点击标识',
-        help: '访客的点击 ID',
-        render: (row) => `<div class="mono wrap">${escapeHtml(row.click_id)}</div>`,
-      },
-      {
         label: '匹配可信度',
+        size: 'normal',
         help: '匹配是否可靠',
         render: (row) => badge(row.confidence, translateStatus(row.confidence)),
       },
       {
         label: '匹配分',
+        size: 'normal',
         help: '分数越高，说明越像同一位访客',
         render: (row) => `<span class="mono">${escapeHtml(row.match_score ?? '-')}</span>`,
       },
       {
+        label: '时间间隔',
+        size: 'normal',
+        help: '点击到下单过了多少秒',
+        render: (row) => `<span class="mono">${escapeHtml(row.time_diff_seconds)}s</span>`,
+      },
+      {
+        label: '匹配时间',
+        size: 'normal',
+        help: '匹配成功的时间',
+        render: (row) => escapeHtml(formatDate(row.match_time)),
+      },
+      {
+        label: '点击标识',
+        size: 'large',
+        help: '访客的点击 ID',
+        render: (row) => `<div class="mono wrap">${escapeHtml(row.click_id)}</div>`,
+      },
+      {
         label: '命中信号',
+        size: 'full',
         help: '系统是根据哪些证据判断匹配的',
         render: (row) =>
           renderTextDetail(
             translateReasonValue('signals', row.match_signals),
             '暂无命中信号'
           ),
-      },
-      {
-        label: '时间间隔',
-        help: '点击到下单过了多少秒',
-        render: (row) => `<span class="mono">${escapeHtml(row.time_diff_seconds)}s</span>`,
-      },
-      {
-        label: '匹配时间',
-        help: '匹配成功的时间',
-        render: (row) => escapeHtml(formatDate(row.match_time)),
       },
     ],
     matches,
@@ -1163,39 +1187,46 @@ function renderBusinessViews() {
     elements.eventsTable,
     [
       {
-        label: '事件编号',
-        help: 'Shopify 事件 ID',
-        render: (row) => `<div class="mono wrap">${escapeHtml(row.webhook_id)}</div>`,
-      },
-      {
         label: '事件类型',
+        size: 'normal',
         help: '收到什么类型的事件',
         render: (row) => `<span class="mono">${escapeHtml(row.topic)}</span>`,
       },
       {
         label: '相关订单号',
+        size: 'normal',
         help: '此事件对应的订单',
         render: (row) => `<span class="mono">${escapeHtml(row.shopify_order_id)}</span>`,
       },
       {
-        label: '排查编号',
-        help: '可用来串联 webhook、订单和回调日志',
-        render: (row) => renderTextDetail(row.trace_id, '暂无编号'),
-      },
-      {
         label: '处理状态',
+        size: 'normal',
         help: '系统是否处理成功',
         render: (row) => badge(row.status),
       },
       {
-        label: '报错提示',
-        help: '如果未处理成功，这里会写原因',
-        render: (row) => renderTextDetail(row.error_message, '无报错'),
-      },
-      {
         label: '接收时间',
+        size: 'normal',
         help: '收到该请求的时间',
         render: (row) => escapeHtml(formatDate(row.received_at)),
+      },
+      {
+        label: '事件编号',
+        size: 'large',
+        help: 'Shopify 事件 ID',
+        render: (row) => `<div class="mono wrap">${escapeHtml(row.webhook_id)}</div>`,
+      },
+      {
+        label: '排查编号',
+        size: 'large',
+        help: '可用来串联 webhook、订单和回调日志',
+        render: (row) => renderTextDetail(row.trace_id, '暂无编号'),
+      },
+      {
+        label: '报错提示',
+        size: 'full',
+        help: '如果未处理成功，这里会写原因',
+        render: (row) => row.error_message ? `<div class="wrap mono" style="color: var(--danger);">${escapeHtml(row.error_message)}</div>` : `<span class="muted">无报错</span>`,
       },
     ],
     events,
@@ -1210,31 +1241,37 @@ function renderBusinessViews() {
     [
       {
         label: '访问时间',
+        size: 'normal',
         help: '访客到达的时间',
         render: (row) => escapeHtml(formatDate(row.timestamp)),
       },
       {
+        label: '访客 IP',
+        size: 'normal',
+        help: '访问来源 IP 地址',
+        render: (row) => `<span class="mono">${escapeHtml(row.ip || '-')}</span>`,
+      },
+      {
         label: 'TT 点击标识',
+        size: 'large',
         help: 'TikTok 广告参数',
         render: (row) => `<div class="mono wrap">${escapeHtml(row.ttclid || '-')}</div>`,
       },
       {
         label: 'FB 点击标识',
+        size: 'large',
         help: 'Facebook 广告参数',
         render: (row) => `<div class="mono wrap">${escapeHtml(row.fbclid || '-')}</div>`,
       },
       {
-        label: '访客 IP',
-        help: '访问来源 IP 地址',
-        render: (row) => `<span class="mono">${escapeHtml(row.ip || '-')}</span>`,
-      },
-      {
         label: '访问商品',
+        size: 'full',
         help: '访客浏览的是哪个商品',
         render: (row) => `<div class="wrap">${escapeHtml(row.product_id || '-')}</div>`,
       },
       {
         label: '浏览器信息',
+        size: 'full',
         help: '使用的设备或浏览器',
         render: (row) => renderTextDetail(row.user_agent, '无设备信息'),
       },
