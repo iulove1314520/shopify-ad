@@ -1,10 +1,9 @@
 const TOKEN_STORAGE_KEY = 'shopee-cpas-api-token';
 const DEFAULT_LIMIT = 20;
+const DISPLAY_TIME_ZONE = 'Asia/Shanghai';
 
-const state = {
-  showOnlyFailures: false,
-  cleanupInputsDirty: false,
-  data: {
+function createEmptyBusinessData() {
+  return {
     system: null,
     stats: null,
     orders: [],
@@ -12,7 +11,13 @@ const state = {
     matches: [],
     events: [],
     visitors: [],
-  },
+  };
+}
+
+const state = {
+  showOnlyFailures: false,
+  cleanupInputsDirty: false,
+  data: createEmptyBusinessData(),
 };
 
 const elements = {
@@ -94,6 +99,7 @@ function formatDate(value) {
   return new Intl.DateTimeFormat('zh-CN', {
     dateStyle: 'short',
     timeStyle: 'medium',
+    timeZone: DISPLAY_TIME_ZONE,
   }).format(date);
 }
 
@@ -932,6 +938,14 @@ function getFilteredRows(rows, type) {
     return rows.filter(isProblemOrder);
   }
 
+  if (type === 'callbacks') {
+    return rows.filter(isProblemCallback);
+  }
+
+  if (type === 'events') {
+    return rows.filter(isProblemEvent);
+  }
+
   return rows;
 }
 
@@ -1307,15 +1321,7 @@ async function refreshDashboard() {
   elements.lastUpdated.textContent = formatDate(new Date().toISOString());
 
   if (!token) {
-    state.data = {
-      system: null,
-      stats: null,
-      orders: [],
-      callbacks: [],
-      matches: [],
-      events: [],
-      visitors: [],
-    };
+    state.data = createEmptyBusinessData();
     clearBusinessViews('请输入 API_AUTH_TOKEN 以读取业务数据。');
     updateFilterUi();
     setAuthStatus('未输入令牌，业务数据已隐藏。', 'warning');
@@ -1577,8 +1583,13 @@ function bindEvents() {
   elements.clearTokenBtn.addEventListener('click', () => {
     elements.tokenInput.value = '';
     writeToken('');
+    state.data = createEmptyBusinessData();
+    state.showOnlyFailures = false;
+    state.cleanupInputsDirty = false;
     elements.authModule.classList.remove('is-authorized');
-    setAuthStatus('已清除验证令牌。', 'danger');
+    clearBusinessViews('请输入 API_AUTH_TOKEN 以读取业务数据。');
+    updateFilterUi();
+    setAuthStatus('已清除验证令牌，业务数据已隐藏。', 'warning');
   });
 
   elements.toggleTokenBtn.addEventListener('click', () => {

@@ -170,6 +170,20 @@ body.aurora-theme {
 }
 .sidebar-toggle-btn:hover { background: rgba(0,0,0,0.05); color: var(--text-main); transform: scale(1.08); }
 .sidebar-toggle-btn:active { transform: scale(0.92); }
+.sidebar-toggle-btn:focus-visible,
+.nav-item:focus-visible,
+.cleanup-nav-btn:focus-visible,
+.btn:focus-visible,
+.btn-icon:focus-visible,
+.cleanup-tab:focus-visible,
+.auth-header:focus-visible,
+.text-detail summary:focus-visible,
+.btn-copy-float:focus-visible,
+.input-glass input:focus-visible,
+.cleanup-input-group input:focus-visible {
+  outline: 2px solid var(--apple-blue);
+  outline-offset: 2px;
+}
 .sidebar.collapsed .sidebar-toggle-btn { transform: rotate(180deg); }
 .sidebar.collapsed .sidebar-toggle-btn:hover { transform: rotate(180deg) scale(1.08); }
 
@@ -514,7 +528,7 @@ body.aurora-theme {
   color: var(--text-main);
 }
 .cleanup-tab.active {
-  color: var(--title-main);
+  color: var(--text-main);
   background: #FFFFFF;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08), 0 1px 2px rgba(0,0,0,0.04);
 }
@@ -640,6 +654,9 @@ body.aurora-theme {
 }
 .cleanup-input-group-danger input {
   caret-color: #EF4444;
+}
+.cleanup-input-group-danger input:focus-visible {
+  outline-color: #EF4444;
 }
 .cleanup-input-group input::-webkit-outer-spin-button,
 .cleanup-input-group input::-webkit-inner-spin-button {
