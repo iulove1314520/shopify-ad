@@ -967,6 +967,148 @@ function updateFilterUi() {
     : '当前显示全部订单、回调和事件记录。';
 }
 
+function renderOrders(container, rows, emptyTitle, emptyMessage) {
+  if (!rows || rows.length === 0) {
+    renderEmpty(container, emptyTitle, emptyMessage);
+    return;
+  }
+  const frag = document.createDocumentFragment();
+  const feedList = document.createElement('div');
+  feedList.className = 'order-list-grid';
+
+  rows.forEach((row, index) => {
+    const card = document.createElement('div');
+    card.className = 'order-ui-card';
+    card.style.animationDelay = `${index * 0.05}s`;
+
+    const statusBadge = badge(row.status);
+    const amountStr = `${escapeHtml(row.total_price)} ${escapeHtml(row.currency)}`;
+    const dateStr = escapeHtml(formatDate(row.created_at));
+    const payStatusText = escapeHtml(translateStatus(row.financial_status) || row.financial_status || '-');
+
+    let actionHtml = '';
+    if (canRetryOrder(row)) {
+      actionHtml = `
+        <button
+          class="order-btn-retry"
+          type="button"
+          data-action="retry-order"
+          data-order-id="${escapeHtml(row.order_id)}"
+        >
+          手动重试 / 重发回调
+        </button>
+      `;
+    }
+
+    card.innerHTML = `
+      <div class="order-hd">
+        <div class="order-id-block">
+          <span class="order-tag">Order ID</span>
+          <span class="order-uid mono">${escapeHtml(row.order_id)}</span>
+        </div>
+        <div class="order-status-block">${statusBadge}</div>
+      </div>
+      <div class="order-bd">
+        <div class="o-amount-group">
+          <div class="o-amount-val mono">${amountStr}</div>
+          <div class="o-amount-sub">支付状态：${payStatusText}</div>
+        </div>
+        <div class="o-meta-grid">
+          <div class="o-meta-row">
+            <span class="o-meta-label">接收时间</span>
+            <span class="o-meta-value">${dateStr}</span>
+          </div>
+          <div class="o-meta-row">
+            <span class="o-meta-label">排查编号</span>
+            <span class="o-meta-value">${renderTextDetail(row.trace_id, '暂无')}</span>
+          </div>
+          ${row.status_reason ? `
+          <div class="o-meta-row o-error-row">
+            <span class="o-meta-label">诊断结论</span>
+            <span class="o-meta-value">${renderReasonDetail(row.status_reason, '正常')}</span>
+          </div>` : ''}
+        </div>
+      </div>
+      ${actionHtml ? `<div class="order-ft">${actionHtml}</div>` : ''}
+    `;
+
+    feedList.appendChild(card);
+  });
+
+  frag.appendChild(feedList);
+  container.innerHTML = '';
+  container.appendChild(frag);
+}
+
+function renderCallbacks(container, rows, emptyTitle, emptyMessage) {
+  if (!rows || rows.length === 0) {
+    renderEmpty(container, emptyTitle, emptyMessage);
+    return;
+  }
+  const frag = document.createDocumentFragment();
+  const feedList = document.createElement('div');
+  feedList.className = 'callback-list-grid';
+
+  rows.forEach((row, index) => {
+    const card = document.createElement('div');
+    card.className = 'callback-ui-card glass-panel';
+    card.style.animationDelay = `${index * 0.05}s`;
+
+    const statusBadge = badge(row.status);
+    const platformBadge = badge(row.platform, row.platform || '-');
+    const triggerSource = row.trigger_source === 'manual_retry' ? '手动重试' : '自动处理';
+    const triggerBadge = badge(row.trigger_source, triggerSource);
+
+    card.innerHTML = `
+      <div class="cb-hd">
+        <div class="cb-platform">
+          ${platformBadge}
+          <span class="cb-time">${escapeHtml(formatDate(row.callback_time))}</span>
+        </div>
+        <div class="cb-status">${statusBadge}</div>
+      </div>
+      <div class="cb-bd">
+        <div class="cb-meta-row">
+          <span class="cb-meta-label">关连订单号</span>
+          <span class="cb-meta-val mono" style="font-size:1.1rem; color:var(--text-main);">${escapeHtml(row.order_id)}</span>
+        </div>
+        <div class="cb-metrics">
+          <div class="cb-metric-item">
+            <span class="cb-meta-label">触发来源</span>
+            <div class="cb-meta-val">${triggerBadge}</div>
+          </div>
+          <div class="cb-metric-item">
+            <span class="cb-meta-label">尝试发送次数</span>
+            <div class="cb-meta-val mono" style="font-weight:600; font-size:1rem; color:var(--text-main);">#${escapeHtml(row.attempt_number || '-')}</div>
+          </div>
+        </div>
+        <div class="cb-meta-row" style="margin-top: 4px;">
+          <span class="cb-meta-label">系统排查链路编号</span>
+          <div class="cb-meta-val">${renderTextDetail(row.trace_id, '暂无')}</div>
+        </div>
+      </div>
+      <div class="cb-ft ${row.error_message ? 'has-error' : ''}">
+        <div class="cb-detail-block">
+          <span class="cb-detail-title">接口最终返回值</span>
+          ${renderTextDetail(row.response_summary, '无返回值')}
+        </div>
+        ${row.error_message ? `
+        <div class="cb-detail-block error-block">
+          <span class="cb-detail-title" style="color:var(--danger);">网络或逻辑阻断报错分析</span>
+          <div class="wrap mono" style="color:var(--danger); background:rgba(255,69,58,0.1); padding:10px; border-radius:8px; font-size:0.85rem; margin-top:6px;">${escapeHtml(row.error_message)}</div>
+        </div>
+        ` : ''}
+      </div>
+    `;
+
+    feedList.appendChild(card);
+  });
+
+  frag.appendChild(feedList);
+  container.innerHTML = '';
+  container.appendChild(frag);
+}
+
 function renderBusinessViews() {
   const stats = state.data.stats || { counts: {}, callbacks_by_status: [] };
   const orders = getFilteredRows(state.data.orders || [], 'orders');
@@ -992,74 +1134,8 @@ function renderBusinessViews() {
   updatePurgeAllUi(state.data.system);
   renderPlatformStatus(state.data.system);
 
-  renderTable(
+  renderOrders(
     elements.ordersTable,
-    [
-      {
-        label: '订单号',
-        size: 'normal',
-        help: 'Shopify 订单编号',
-        render: (row) => `<span class="mono">${escapeHtml(row.order_id)}</span>`,
-      },
-      {
-        label: '处理状态',
-        size: 'normal',
-        help: '该订单当前的状态',
-        render: (row) => badge(row.status),
-      },
-      {
-        label: '订单金额',
-        size: 'normal',
-        help: '订单金额和币种',
-        render: (row) =>
-          `<span class="mono">${escapeHtml(row.total_price)} ${escapeHtml(row.currency)}</span>`,
-      },
-      {
-        label: '支付状态',
-        size: 'normal',
-        help: '订单是否已付款',
-        render: (row) =>
-          `<span class="muted">${escapeHtml(translateStatus(row.financial_status) || row.financial_status || '-')}</span>`,
-      },
-      {
-        label: '接收时间',
-        size: 'normal',
-        help: '后台收到订单的时间',
-        render: (row) => escapeHtml(formatDate(row.created_at)),
-      },
-      {
-        label: '排查编号',
-        size: 'large',
-        help: '需要找开发排查时，可把这个编号发给他',
-        render: (row) => renderTextDetail(row.trace_id, '暂无编号'),
-      },
-      {
-        label: '失败原因',
-        size: 'full',
-        help: '如果处理不顺利，这里会写原因',
-        render: (row) => renderReasonDetail(row.status_reason, '暂无错误原因'),
-      },
-      {
-        label: '操作',
-        size: 'action',
-        help: '必要时可手动重试匹配和回传',
-        render: (row) =>
-          canRetryOrder(row)
-            ? `
-              <div class="table-action-cell">
-                <button
-                  class="btn btn-ghost btn-inline"
-                  type="button"
-                  data-action="retry-order"
-                  data-order-id="${escapeHtml(row.order_id)}"
-                >
-                  手动重试
-                </button>
-              </div>
-            `
-            : `<span class="muted">无需处理</span>`,
-      },
-    ],
     orders,
     '暂无订单记录',
     state.showOnlyFailures
@@ -1067,68 +1143,8 @@ function renderBusinessViews() {
       : '当前还没有任何订单记录。'
   );
 
-  renderTable(
+  renderCallbacks(
     elements.callbacksTable,
-    [
-      {
-        label: '订单号',
-        size: 'normal',
-        help: '关联的订单号',
-        render: (row) => `<span class="mono">${escapeHtml(row.order_id)}</span>`,
-      },
-      {
-        label: '发送结果',
-        size: 'normal',
-        help: '成功、失败还是已跳过',
-        render: (row) => badge(row.status),
-      },
-      {
-        label: '广告平台',
-        size: 'normal',
-        help: '发送给哪个平台',
-        render: (row) => badge(row.platform, row.platform || '-'),
-      },
-      {
-        label: '触发来源',
-        size: 'normal',
-        help: '是 webhook 自动触发还是人工重试',
-        render: (row) =>
-          badge(
-            row.trigger_source,
-            row.trigger_source === 'manual_retry' ? '手动重试' : '自动处理'
-          ),
-      },
-      {
-        label: '尝试次数',
-        size: 'normal',
-        help: '这是第几次发送',
-        render: (row) => `<span class="mono">${escapeHtml(row.attempt_number || '-')}</span>`,
-      },
-      {
-        label: '发送时间',
-        size: 'normal',
-        help: '回传请求发送的时间',
-        render: (row) => escapeHtml(formatDate(row.callback_time)),
-      },
-      {
-        label: '排查编号',
-        size: 'large',
-        help: '同一次处理链路的统一编号',
-        render: (row) => renderTextDetail(row.trace_id, '暂无编号'),
-      },
-      {
-        label: '平台返回值',
-        size: 'full',
-        help: '接口返回的主要内容',
-        render: (row) => renderTextDetail(row.response_summary, '无返回值'),
-      },
-      {
-        label: '报错详情',
-        size: 'full',
-        help: '发送失败的具体原因',
-        render: (row) => row.error_message ? `<div class="wrap mono" style="color: var(--danger);">${escapeHtml(row.error_message)}</div>` : `<span class="muted">无报错</span>`,
-      },
-    ],
     callbacks,
     '暂无回调记录',
     state.showOnlyFailures

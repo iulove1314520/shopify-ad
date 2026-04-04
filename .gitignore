@@ -33,6 +33,8 @@ logs/
 .vscode/
 .idea/
 .cache/
+.claude/
+.agents/
 tmp/
 temp/
 *.pid
@@ -40,9 +42,11 @@ temp/
 *.swp
 *.swo
 *~
+
+# 本地任务草稿与技能锁文件
 TASK-20260403-05.md
 TASK-20260403-06.md
 TASK-20260403-07.md
-.gitignore
 TASK-20260403-08.md
 TASK-20260403-09.md
+skills-lock.json
