@@ -407,10 +407,80 @@ function listWebhookEvents(req, res, next) {
   }
 }
 
+function revokeOrderMatch(req, res, next) {
+  try {
+    const shopifyOrderId = String(req.params.orderId || '').trim();
+    const traceId = getTraceId(req);
+    const reason = String(req.body?.reason || 'manual_revoke').trim();
+
+    if (!shopifyOrderId) {
+      res.status(400).json({ error: 'Missing order id' });
+      return;
+    }
+
+    const order = findOrderByShopifyOrderId(shopifyOrderId);
+
+    if (!order) {
+      res.status(404).json({ error: 'Order not found' });
+      return;
+    }
+
+    const activeMatch = db
+      .prepare(
+        `
+          SELECT id, visitor_id, click_id, platform
+          FROM matches
+          WHERE order_id = ? AND active = 1
+          LIMIT 1
+        `
+      )
+      .get(order.id);
+
+    if (!activeMatch) {
+      res.status(409).json({ error: 'No active match to revoke' });
+      return;
+    }
+
+    const now = new Date().toISOString();
+
+    db.prepare(
+      `
+        UPDATE matches
+        SET active = 0, released_at = ?, released_reason = ?
+        WHERE id = ?
+      `
+    ).run(now, reason, activeMatch.id);
+
+    updateOrderStatus(order.id, 'matched_revoked', `revoked;reason=${reason}`, traceId);
+
+    logWarn(
+      'match.manual_revoke',
+      withTraceId(traceId, {
+        shopifyOrderId,
+        matchId: activeMatch.id,
+        visitorId: activeMatch.visitor_id,
+        reason,
+      })
+    );
+
+    res.json({
+      ok: true,
+      orderId: shopifyOrderId,
+      matchId: activeMatch.id,
+      visitorId: activeMatch.visitor_id,
+      releasedAt: now,
+      reason,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
 module.exports = {
   processOrderWebhook,
   verifyShopifySignature,
   listOrders,
   listWebhookEvents,
   retryOrderCallback,
+  revokeOrderMatch,
 };

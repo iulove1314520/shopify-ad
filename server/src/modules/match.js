@@ -5,14 +5,15 @@ const { sendToTikTok } = require('../services/tiktok');
 const { sendToFacebook } = require('../services/facebook');
 const {
   extractOrderSignals,
-  rankVisitorCandidates,
   scoreVisitorCandidate,
 } = require('../utils/match-scoring');
+const { classifyProductEvidence } = require('../utils/product-fingerprint');
+const { buildIpEvidence } = require('../utils/geo-evidence');
+const { decideMatch } = require('../utils/match-decision');
 const { logInfo, logWarn, logError, withTraceId } = require('../utils/logger');
 const { resolveLimit } = require('../utils/pagination');
 
-const MIN_MATCH_SCORE = 25;
-const AMBIGUOUS_SCORE_GAP = 8;
+const MATCH_WINDOW_HOURS = 24;
 
 function sanitizeReasonValue(value) {
   return String(value || '')
@@ -66,10 +67,11 @@ function buildUnmatchedStatusReason(result) {
     ['reason', result.reason],
     ['total_visitors', result.totalVisitorsInWindow],
     ['eligible_visitors', result.eligibleVisitorCount],
-    ['product_match_candidates', result.productMatchCandidateCount],
-    ['ip_match_candidates', result.ipMatchCandidateCount],
+    ['candidates', result.candidateCount],
     ['best_score', result.bestScore],
+    ['second_score', result.secondScore],
     ['score_gap', result.scoreGap],
+    ['best_time_diff_minutes', result.bestTimeDiffMinutes],
   ]);
 }
 
@@ -88,11 +90,22 @@ function buildMatchedStatusReason(platform, confidence, callbackResult, matchMet
   ]);
 }
 
+/**
+ * Get the new-engine time score for a candidate.
+ * <= 1h → 30, <= 6h → 20, <= 24h → 10, > 24h → eliminated.
+ */
+function getNewTimeScore(timeDiffMs) {
+  const hours = timeDiffMs / (60 * 60 * 1000);
+  if (hours <= 1) return 30;
+  if (hours <= 6) return 20;
+  if (hours <= 24) return 10;
+  return 0;
+}
+
 function findBestVisitor(order) {
   const orderTime = new Date(order.created_at).getTime();
-  const windowStart = new Date(
-    orderTime - env.matchWindowDays * 24 * 60 * 60 * 1000
-  ).toISOString();
+  const windowMs = MATCH_WINDOW_HOURS * 60 * 60 * 1000;
+  const windowStart = new Date(orderTime - windowMs).toISOString();
 
   const totalVisitorsInWindow = db
     .prepare(
@@ -104,76 +117,173 @@ function findBestVisitor(order) {
     )
     .get(windowStart, order.created_at).count;
 
+  // 候选筛选层: 24h内、有点击ID、未被占用
   const candidates = db
     .prepare(
       `
         SELECT
-          id,
-          ttclid,
-          fbclid,
-          ip,
-          timestamp,
-          product_id
-        FROM visitors
+          v.id,
+          v.ttclid,
+          v.fbclid,
+          v.ip,
+          v.timestamp,
+          v.product_id
+        FROM visitors v
         WHERE
-          (ttclid <> '' OR fbclid <> '')
-          AND timestamp >= ?
-          AND timestamp <= ?
-        ORDER BY timestamp DESC
+          (v.ttclid <> '' OR v.fbclid <> '')
+          AND v.timestamp >= ?
+          AND v.timestamp <= ?
+          AND NOT EXISTS (
+            SELECT 1 FROM matches m
+            WHERE m.visitor_id = v.id AND m.active = 1
+          )
+        ORDER BY v.timestamp DESC
       `
     )
     .all(windowStart, order.created_at);
 
-  const orderSignals = extractOrderSignals(order);
-  const rankedCandidates = rankVisitorCandidates(order, candidates);
-  const bestCandidate = rankedCandidates[0] || null;
-  const secondCandidate = rankedCandidates[1] || null;
-  const summary = {
-    totalVisitorsInWindow,
-    eligibleVisitorCount: candidates.length,
-    orderProductSignalCount: orderSignals.productKeys.length,
-    productMatchCandidateCount: rankedCandidates.filter((item) => item.productMatched).length,
-    ipMatchCandidateCount: rankedCandidates.filter(
-      (item) => item.exactIpMatched || item.geoMatched
-    ).length,
-    candidatesWithProductHint: rankedCandidates.filter(
-      (item) => item.visitorHasProductHint
-    ).length,
-    bestScore: bestCandidate ? bestCandidate.score : null,
-    bestTimeDiffMs: bestCandidate ? bestCandidate.timeDiffMs : null,
-    scoreGap:
-      bestCandidate && secondCandidate
-        ? bestCandidate.score - secondCandidate.score
-        : null,
-    isAmbiguous:
-      Boolean(bestCandidate && secondCandidate) &&
-      bestCandidate.score < 70 &&
-      bestCandidate.score - secondCandidate.score < AMBIGUOUS_SCORE_GAP,
-  };
-
-  const unmatchedReason = buildUnmatchedReason(summary);
-  if (
-    !bestCandidate ||
-    summary.isAmbiguous ||
-    !Number.isFinite(bestCandidate.score) ||
-    bestCandidate.score < MIN_MATCH_SCORE
-  ) {
+  if (candidates.length === 0) {
+    const reason = totalVisitorsInWindow === 0
+      ? 'no_visitors_in_window'
+      : 'visitors_missing_click_id_or_occupied';
     return {
       matched: false,
-      reason: unmatchedReason,
-      ...summary,
+      reason,
+      totalVisitorsInWindow,
+      eligibleVisitorCount: 0,
     };
   }
 
+  // 证据提取层
+  const orderSignals = extractOrderSignals(order);
+  const orderTitles = (orderSignals.productKeys || []).length > 0
+    ? getOrderTitles(order)
+    : [];
+
+  const scored = candidates.map((visitor) => {
+    const visitorTimestamp = new Date(visitor.timestamp).getTime();
+    const timeDiffMs = orderTime - visitorTimestamp;
+
+    if (timeDiffMs < 0 || !Number.isFinite(timeDiffMs)) {
+      return null;
+    }
+
+    const timeScore = getNewTimeScore(timeDiffMs);
+    if (timeScore === 0) {
+      return null; // Beyond 24h window
+    }
+
+    // 商品证据
+    const productEvidence = classifyProductEvidence(
+      orderTitles,
+      visitor.product_id
+    );
+    const productScore = productEvidence.level === 'strong' ? 40
+      : productEvidence.level === 'weak' ? 15
+      : 0;
+
+    // IP/Geo 证据
+    const ipEvidence = buildIpEvidence(orderSignals, visitor.ip);
+
+    const totalScore = timeScore + productScore + ipEvidence.score;
+
+    const signals = [];
+    if (timeScore >= 30) signals.push('time_close');
+    else if (timeScore >= 20) signals.push('time_medium');
+    else signals.push('time_far');
+
+    if (productEvidence.level !== 'none') {
+      signals.push(`product_${productEvidence.level}`);
+    }
+    signals.push(...ipEvidence.signals);
+
+    return {
+      visitorId: visitor.id,
+      visitor,
+      score: totalScore,
+      productLevel: productEvidence.level,
+      ipLevel: ipEvidence.level,
+      timeDiffMs,
+      timeDiffMinutes: Math.round(timeDiffMs / 60000),
+      signals,
+      ipSignals: ipEvidence.signals,
+      productDetails: productEvidence.details,
+    };
+  }).filter(Boolean);
+
+  if (scored.length === 0) {
+    return {
+      matched: false,
+      reason: 'no_valid_match_candidate',
+      totalVisitorsInWindow,
+      eligibleVisitorCount: candidates.length,
+    };
+  }
+
+  // 决策层
+  const decision = decideMatch({ candidates: scored });
+
+  if (!decision.matched) {
+    const sorted = [...scored].sort((a, b) => b.score - a.score);
+    const best = sorted[0];
+    const second = sorted[1];
+    return {
+      matched: false,
+      reason: decision.reasonCode,
+      totalVisitorsInWindow,
+      eligibleVisitorCount: candidates.length,
+      bestScore: best?.score,
+      secondScore: second?.score,
+      scoreGap: second ? best.score - second.score : null,
+      bestTimeDiffMinutes: best?.timeDiffMinutes,
+      candidateCount: scored.length,
+    };
+  }
+
+  // 匹配成功
+  const winner = decision.winner;
+  const clickId = winner.visitor.ttclid || winner.visitor.fbclid;
+  const platform = winner.visitor.ttclid ? 'TikTok' : 'Facebook';
+  const confidence = winner.score >= 80 ? '高' : winner.score >= 55 ? '中' : '低';
+
+  const decisionSummary = buildReasonString([
+    ['mode', decision.mode],
+    ['product', winner.productLevel],
+    ['time_diff_minutes', winner.timeDiffMinutes],
+    ['ip', winner.ipSignals?.join(',')],
+    ['lead_gap', decision.leadGap],
+    ['click_source', platform.toLowerCase()],
+  ]);
+
   return {
     matched: true,
-    visitor: bestCandidate.visitor,
-    confidence: bestCandidate.confidence,
-    score: bestCandidate.score,
-    signals: bestCandidate.signals,
-    timeDiffMs: bestCandidate.timeDiffMs,
-    ...summary,
+    visitor: winner.visitor,
+    confidence,
+    score: winner.score,
+    signals: winner.signals,
+    timeDiffMs: winner.timeDiffMs,
+    matchMode: decision.mode,
+    leadScoreGap: decision.leadGap,
+    decisionSummary,
+    totalVisitorsInWindow,
+    eligibleVisitorCount: candidates.length,
+    candidateCount: scored.length,
   };
+}
+
+/**
+ * Extract order line item titles for product evidence comparison.
+ */
+function getOrderTitles(order) {
+  let payload = order?.raw_payload;
+  if (typeof payload === 'string') {
+    try { payload = JSON.parse(payload); } catch (_) { return []; }
+  }
+  if (!payload || typeof payload !== 'object') return [];
+  const items = Array.isArray(payload.line_items) ? payload.line_items : [];
+  return items
+    .map((item) => item?.title || item?.name || item?.product_title || '')
+    .filter(Boolean);
 }
 
 function getExistingMatch(orderId) {
@@ -187,9 +297,13 @@ function getExistingMatch(orderId) {
           confidence,
           match_score,
           match_signals,
-          time_diff_seconds
+          time_diff_seconds,
+          active,
+          match_mode,
+          lead_score_gap,
+          decision_summary
         FROM matches
-        WHERE order_id = ?
+        WHERE order_id = ? AND active = 1
         LIMIT 1
       `
     )
@@ -264,7 +378,10 @@ function upsertMatch(
   confidence,
   timeDiffMs,
   matchScore,
-  matchSignals
+  matchSignals,
+  matchMode,
+  leadScoreGap,
+  decisionSummary
 ) {
   db.prepare(
     `
@@ -278,8 +395,12 @@ function upsertMatch(
         match_score,
         match_signals,
         match_time,
-        time_diff_seconds
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        time_diff_seconds,
+        active,
+        match_mode,
+        lead_score_gap,
+        decision_summary
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)
       ON CONFLICT(order_id) DO UPDATE SET
         visitor_id = excluded.visitor_id,
         shopify_order_id = excluded.shopify_order_id,
@@ -289,7 +410,11 @@ function upsertMatch(
         match_score = excluded.match_score,
         match_signals = excluded.match_signals,
         match_time = excluded.match_time,
-        time_diff_seconds = excluded.time_diff_seconds
+        time_diff_seconds = excluded.time_diff_seconds,
+        active = 1,
+        match_mode = excluded.match_mode,
+        lead_score_gap = excluded.lead_score_gap,
+        decision_summary = excluded.decision_summary
     `
   ).run(
     order.id,
@@ -301,7 +426,10 @@ function upsertMatch(
     matchScore,
     Array.isArray(matchSignals) ? matchSignals.join(',') : '',
     new Date().toISOString(),
-    Math.round(timeDiffMs / 1000)
+    Math.round(timeDiffMs / 1000),
+    matchMode || '',
+    leadScoreGap || 0,
+    decisionSummary || ''
   );
 }
 
@@ -490,7 +618,10 @@ async function matchOrder(order, options = {}) {
       confidence,
       bestMatch.timeDiffMs,
       bestMatch.score,
-      bestMatch.signals
+      bestMatch.signals,
+      bestMatch.matchMode,
+      bestMatch.leadScoreGap,
+      bestMatch.decisionSummary
     );
 
     logInfo(
@@ -501,6 +632,8 @@ async function matchOrder(order, options = {}) {
         confidence,
         score: bestMatch.score,
         signals: bestMatch.signals,
+        matchMode: bestMatch.matchMode,
+        leadScoreGap: bestMatch.leadScoreGap,
         triggerSource,
       })
     );

@@ -57,12 +57,19 @@ CREATE TABLE IF NOT EXISTS matches (
   match_signals TEXT NOT NULL DEFAULT '',
   match_time TEXT NOT NULL,
   time_diff_seconds INTEGER NOT NULL DEFAULT 0,
+  active INTEGER NOT NULL DEFAULT 1,
+  released_at TEXT,
+  released_reason TEXT NOT NULL DEFAULT '',
+  match_mode TEXT NOT NULL DEFAULT '',
+  lead_score_gap INTEGER NOT NULL DEFAULT 0,
+  decision_summary TEXT NOT NULL DEFAULT '',
   FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE,
   FOREIGN KEY (visitor_id) REFERENCES visitors(id) ON DELETE CASCADE
 );
 
 CREATE INDEX IF NOT EXISTS idx_matches_order_id ON matches(order_id);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_matches_order_unique ON matches(order_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_matches_active_visitor_unique ON matches(visitor_id) WHERE active = 1;
 
 CREATE TABLE IF NOT EXISTS callbacks (
   id INTEGER PRIMARY KEY AUTOINCREMENT,

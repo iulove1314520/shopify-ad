@@ -9,6 +9,7 @@ const {
   listOrders,
   listWebhookEvents,
   retryOrderCallback,
+  revokeOrderMatch,
 } = require('../modules/order');
 const {
   getStats,
@@ -38,6 +39,11 @@ const purgeRateLimiter = createRateLimiter({
   windowMs: env.purgeRateLimitWindowMs,
   max: env.purgeRateLimitMax,
 });
+const revokeMatchRateLimiter = createRateLimiter({
+  name: 'revoke_match',
+  windowMs: env.retryRateLimitWindowMs,
+  max: env.retryRateLimitMax,
+});
 
 router.post('/visitor', visitorRateLimiter, handleVisitor);
 router.get('/system', requireApiAuth, getSystemDetail);
@@ -61,6 +67,12 @@ router.post(
   requireApiAuth,
   retryRateLimiter,
   retryOrderCallback
+);
+router.post(
+  '/orders/:orderId/revoke-match',
+  requireApiAuth,
+  revokeMatchRateLimiter,
+  revokeOrderMatch
 );
 router.get('/matches', requireApiAuth, listMatches);
 router.get('/callbacks', requireApiAuth, listCallbacks);
