@@ -52,6 +52,18 @@ try {
 }
 // ── End 定时清理 ────────────────────────────────────────────
 
+// ── 定时 WAL checkpoint（防止 WAL 文件无限增长）───────────────
+const WAL_CHECKPOINT_INTERVAL_MS = 5 * 60 * 1000; // 每 5 分钟
+const walCheckpointTimer = setInterval(() => {
+  try {
+    db.pragma('wal_checkpoint(TRUNCATE)');
+  } catch (error) {
+    logError('wal.checkpoint_failed', { message: error.message });
+  }
+}, WAL_CHECKPOINT_INTERVAL_MS);
+walCheckpointTimer.unref();
+// ── End WAL checkpoint ────────────────────────────────────────
+
 function shutdown(signal) {
   logInfo('server.stopping', { signal });
 

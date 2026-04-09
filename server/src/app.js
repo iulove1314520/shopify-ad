@@ -34,18 +34,19 @@ function isAllowedOrigin(req, origin) {
 function createApp() {
   const app = express();
   const publicDir = path.resolve(__dirname, '../public');
-  const uiStaticOptions = {
-    etag: false,
-    lastModified: false,
-    setHeaders(res) {
-      res.setHeader(
-        'Cache-Control',
-        'no-store, no-cache, must-revalidate, proxy-revalidate'
-      );
-      res.setHeader('Pragma', 'no-cache');
-      res.setHeader('Expires', '0');
-      res.setHeader('Surrogate-Control', 'no-store');
-    },
+  // index.html 始终不缓存，确保用户总是拿到最新入口
+  const htmlCacheHeaders = {
+    'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+    'Pragma': 'no-cache',
+    'Expires': '0',
+    'Surrogate-Control': 'no-store',
+  };
+  // JS/CSS 等静态资源带版本号 (?v=...)，启用 ETag + 短时缓存
+  const assetStaticOptions = {
+    etag: true,
+    lastModified: true,
+    maxAge: '1h',
+    immutable: false,
   };
 
   app.disable('x-powered-by');
@@ -73,11 +74,15 @@ function createApp() {
       res.header('Access-Control-Allow-Origin', origin);
     }
 
-    // 安全头：限制资源加载来源，降低 XSS 攻击面
+    // 安全头：降低 XSS / 点击劫持 / MIME 嗅探攻击面
     res.header(
       'Content-Security-Policy',
       "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'"
     );
+    res.header('X-Content-Type-Options', 'nosniff');
+    res.header('X-Frame-Options', 'DENY');
+    res.header('Referrer-Policy', 'strict-origin-when-cross-origin');
+    res.header('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
 
     if (req.method === 'OPTIONS') {
       res.sendStatus(204);
@@ -95,10 +100,12 @@ function createApp() {
   app.use('/api', apiRouter);
   app.get('/', (req, res) => res.redirect(301, '/ui'));
   app.get('/ui', (req, res) => {
-    uiStaticOptions.setHeaders(res);
+    for (const [key, value] of Object.entries(htmlCacheHeaders)) {
+      res.setHeader(key, value);
+    }
     res.sendFile(path.join(publicDir, 'index.html'));
   });
-  app.use('/ui', express.static(publicDir, uiStaticOptions));
+  app.use('/ui', express.static(publicDir, assetStaticOptions));
 
   app.use((req, res) => {
     res.status(404).json({ error: 'Not Found' });

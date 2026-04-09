@@ -121,7 +121,7 @@ function buildSystemDetail() {
     },
     database: {
       reachable: true,
-      path: env.sqlitePath,
+      path: env.nodeEnv === 'production' ? '(hidden)' : env.sqlitePath,
       journal_mode: db.pragma('journal_mode', { simple: true }),
     },
     retention_policy: getRetentionPolicy(),

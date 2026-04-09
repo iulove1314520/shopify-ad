@@ -149,6 +149,7 @@ function translateStatus(value) {
     callback_sent: '回传成功',
     skipped: '已跳过',
     matched_no_callback: '已匹配，待补回传',
+    matched_revoked: '匹配已撤销',
     unmatched: '未匹配',
     processed: '处理完毕',
     processing_failed: '处理失败',
@@ -158,11 +159,17 @@ function translateStatus(value) {
     ignored_pending: '状态不符跳过',
     no_visitors_in_window: '时间窗口内没有访客',
     visitors_missing_click_id: '访客没有广告点击参数',
+    visitors_missing_click_id_or_occupied: '无可用访客（缺点击ID或已被占用）',
     ambiguous_match_candidates: '候选记录过于接近，系统不敢自动判定',
     product_not_matched: '有访客，但商品对不上',
     time_gap_too_large: '访客和下单时间差过大',
     score_below_threshold: '匹配分太低，系统判定不可靠',
     no_valid_match_candidate: '没有足够可靠的匹配对象',
+    main_score_too_low: '主路径匹配分不足',
+    main_gap_too_small: '主路径领先分差不够',
+    fallback_score_too_low: '降级路径匹配分不足',
+    fallback_gap_too_small: '降级路径候选太接近',
+    no_candidate: '无有效候选',
     ok: '正常',
     tiktok: 'TikTok',
     facebook: 'Facebook',
@@ -176,6 +183,8 @@ function translateStatus(value) {
     '高': '高可信',
     '中': '中可信',
     '低': '低可信',
+    main: '主路径',
+    fallback: '降级路径',
   };
 
   return dictionary[normalized] || value || '-';
@@ -197,7 +206,8 @@ function getStatusTone(status = '') {
     normalized.includes('fail') ||
     normalized.includes('invalid') ||
     normalized === 'unmatched' ||
-    normalized.includes('error')
+    normalized.includes('error') ||
+    normalized === 'matched_revoked'
   ) {
     return 'danger';
   }
@@ -231,10 +241,13 @@ function describeReasonKey(key) {
     reason: '未成功原因',
     total_visitors: '时间窗口内访客数',
     eligible_visitors: '带广告参数的访客数',
+    candidates: '有效候选数',
     product_match_candidates: '商品能对上的候选数',
     ip_match_candidates: 'IP 或地区能对上的候选数',
     best_score: '最高匹配分',
+    second_score: '第二名分数',
     score_gap: '第一名领先分差',
+    best_time_diff_minutes: '最佳候选时间差(分钟)',
     matched_platform: '匹配平台',
     confidence: '匹配可信度',
     score: '匹配分',
@@ -245,6 +258,12 @@ function describeReasonKey(key) {
     http_status: 'HTTP 状态',
     retryable: '是否可重试',
     error: '失败说明',
+    mode: '匹配路径',
+    product: '商品证据',
+    time_diff_minutes: '时间差(分钟)',
+    ip: 'IP 信号',
+    lead_gap: '领先分差',
+    click_source: '点击来源',
   };
 
   return dictionary[key] || key;
@@ -252,12 +271,16 @@ function describeReasonKey(key) {
 
 function translateSignalToken(value) {
   const dictionary = {
-    time_close: '下单时间很接近',
+    time_close: '下单时间很接近（≤1h）',
+    time_medium: '下单时间中等距离（1-6h）',
     time_window_ok: '在合理时间窗口内',
-    time_far: '时间偏远',
+    time_far: '时间偏远（6-24h）',
     product_match: '商品信息一致',
     product_mismatch: '商品信息不一致',
+    product_strong: '商品证据强一致',
+    product_weak: '商品证据部分相似',
     browser_ip_exact: '浏览器 IP 一致',
+    browser_ip_mismatch: '浏览器 IP 不一致',
     geo_country: '国家一致',
     geo_region: '地区一致',
     geo_city: '城市一致',
@@ -926,6 +949,7 @@ function isProblemOrder(order) {
     'processing_failed',
     'unmatched',
     'matched_no_callback',
+    'matched_revoked',
   ].includes(status);
 }
 
@@ -1129,6 +1153,13 @@ function renderCallbacks(container, rows, emptyTitle, emptyMessage) {
   container.appendChild(frag);
 }
 
+function translateMatchMode(mode) {
+  if (!mode) return '-';
+  if (mode === 'main') return '主路径';
+  if (mode === 'fallback') return '降级路径';
+  return mode;
+}
+
 function renderMatches(container, rows, emptyTitle, emptyMessage) {
   if (!rows || rows.length === 0) {
     renderEmpty(container, emptyTitle, emptyMessage);
@@ -1143,9 +1174,31 @@ function renderMatches(container, rows, emptyTitle, emptyMessage) {
     card.className = 'match-ui-card glass-panel';
     card.style.animationDelay = `${index * 0.05}s`;
 
+    const isActive = row.active !== 0;
     const platformBadge = badge(row.platform, row.platform || '-');
     const confidenceBadge = badge(row.confidence, translateStatus(row.confidence));
     const scoreVal = row.match_score ?? '-';
+    const modeBadge = row.match_mode
+      ? badge(row.match_mode === 'main' ? 'ok' : 'pending', translateMatchMode(row.match_mode))
+      : '<span class="muted">-</span>';
+    const gapVal = row.lead_score_gap != null ? row.lead_score_gap : '-';
+    const activeLabel = isActive
+      ? '<span class="badge badge-success">占用中</span>'
+      : '<span class="badge badge-danger">已释放</span>';
+
+    let revokeHtml = '';
+    if (isActive) {
+      revokeHtml = `
+        <button
+          class="order-btn-retry" style="background: rgba(255,69,58,0.15); color: var(--danger); border-color: rgba(255,69,58,0.3);"
+          type="button"
+          data-action="revoke-match"
+          data-order-id="${escapeHtml(row.order_id)}"
+        >
+          撤销匹配
+        </button>
+      `;
+    }
 
     card.innerHTML = `
       <div class="match-hd">
@@ -1165,16 +1218,28 @@ function renderMatches(container, rows, emptyTitle, emptyMessage) {
       <div class="match-bd">
          <div class="m-score-hub">
            <div class="m-metric">
-              <span class="m-metric-title">匹配分阀值</span>
+              <span class="m-metric-title">匹配分</span>
               <span class="m-metric-big mono">${scoreVal}</span>
            </div>
            <div class="m-metric">
-              <span class="m-metric-title">可信度侦测</span>
+              <span class="m-metric-title">可信度</span>
               <div class="m-metric-badge" style="margin-top:2px;">${confidenceBadge}</div>
+           </div>
+           <div class="m-metric">
+              <span class="m-metric-title">匹配路径</span>
+              <div class="m-metric-badge" style="margin-top:2px;">${modeBadge}</div>
+           </div>
+           <div class="m-metric">
+              <span class="m-metric-title">领先分差</span>
+              <span class="m-metric-norm mono">${escapeHtml(gapVal)}</span>
            </div>
            <div class="m-metric">
               <span class="m-metric-title">点击时差</span>
               <span class="m-metric-norm mono">${escapeHtml(row.time_diff_seconds)}<small>s</small></span>
+           </div>
+           <div class="m-metric">
+              <span class="m-metric-title">占用状态</span>
+              <div class="m-metric-badge" style="margin-top:2px;">${activeLabel}</div>
            </div>
          </div>
          
@@ -1186,12 +1251,19 @@ function renderMatches(container, rows, emptyTitle, emptyMessage) {
             <span class="m-ident-lbl">快照时间:</span>
             <span class="m-ident-val">${escapeHtml(formatDate(row.match_time))}</span>
          </div>
+         ${row.decision_summary ? `
+         <div class="m-ident-row">
+            <span class="m-ident-lbl">决策摘要:</span>
+            <span class="m-ident-val">${renderReasonDetail(row.decision_summary, '暂无')}</span>
+         </div>
+         ` : ''}
       </div>
       
       <div class="match-ft">
-        <span class="m-ft-title">底层命中证据连（Signals）</span>
+        <span class="m-ft-title">命中证据链（Signals）</span>
         ${renderTextDetail(translateReasonValue('signals', row.match_signals), '暂无详细证据链记录')}
       </div>
+      ${revokeHtml ? `<div class="match-action-ft">${revokeHtml}</div>` : ''}
     `;
 
     feedList.appendChild(card);
@@ -1490,6 +1562,42 @@ async function handleRetryOrder(orderId, button) {
     await refreshDashboard();
   } catch (error) {
     setAuthStatus(`订单 ${orderId} 重试失败：${error.message}`, 'danger');
+  } finally {
+    button.disabled = false;
+    button.textContent = originalText;
+  }
+}
+
+async function handleRevokeMatch(orderId, button) {
+  const token = readToken();
+  if (!token) {
+    setAuthStatus('请先输入有效令牌，再执行撤销操作。', 'warning');
+    return;
+  }
+
+  if (!confirm(`确定要撤销订单 ${orderId} 的匹配吗？\n\n撤销后该访客将被释放，可以重新参与其他订单的匹配。`)) {
+    return;
+  }
+
+  const originalText = button.textContent;
+  button.disabled = true;
+  button.textContent = '撤销中...';
+  setAuthStatus(`正在撤销订单 ${orderId} 的匹配 ...`, 'warning');
+
+  try {
+    await requestJson(
+      `/api/orders/${encodeURIComponent(orderId)}/revoke-match`,
+      {
+        token,
+        method: 'POST',
+        body: JSON.stringify({ reason: '前端手动撤销' }),
+      }
+    );
+
+    setAuthStatus(`订单 ${orderId} 的匹配已成功撤销，访客已释放。`, 'success');
+    await refreshDashboard();
+  } catch (error) {
+    setAuthStatus(`订单 ${orderId} 撤销失败：${error.message}`, 'danger');
   } finally {
     button.disabled = false;
     button.textContent = originalText;
@@ -1826,6 +1934,14 @@ function bindEvents() {
       return;
     }
     handleRetryOrder(button.dataset.orderId, button);
+  });
+
+  elements.matchesTable.addEventListener('click', (event) => {
+    const button = event.target.closest('[data-action="revoke-match"]');
+    if (!button) {
+      return;
+    }
+    handleRevokeMatch(button.dataset.orderId, button);
   });
 
   // Issue #1 fix: event delegation for copy buttons (replaces global window.copyToClipboard + onclick)

@@ -725,7 +725,11 @@ function listMatches(req, res, next) {
             match_score,
             match_signals,
             match_time,
-            time_diff_seconds
+            time_diff_seconds,
+            active,
+            match_mode,
+            lead_score_gap,
+            decision_summary
           FROM matches
           ORDER BY match_time DESC
           LIMIT ?

@@ -32,7 +32,6 @@ const env = {
     process.env.BUSINESS_DATA_RETENTION_DAYS,
     30
   ),
-  matchWindowDays: toNumber(process.env.MATCH_WINDOW_DAYS, 3),
   requestTimeoutMs: toNumber(process.env.REQUEST_TIMEOUT_MS, 10000),
   callbackMaxAttempts: toNumber(process.env.CALLBACK_MAX_ATTEMPTS, 2),
   callbackRetryDelayMs: toNumber(process.env.CALLBACK_RETRY_DELAY_MS, 800),
