@@ -68,8 +68,6 @@ CREATE TABLE IF NOT EXISTS matches (
 );
 
 CREATE INDEX IF NOT EXISTS idx_matches_order_id ON matches(order_id);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_matches_order_unique ON matches(order_id);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_matches_active_visitor_unique ON matches(visitor_id) WHERE active = 1;
 
 CREATE TABLE IF NOT EXISTS callbacks (
   id INTEGER PRIMARY KEY AUTOINCREMENT,

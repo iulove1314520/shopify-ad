@@ -50,8 +50,27 @@ function initDatabase() {
   ensureColumn('matches', 'match_mode', "TEXT NOT NULL DEFAULT ''");
   ensureColumn('matches', 'lead_score_gap', 'INTEGER NOT NULL DEFAULT 0');
   ensureColumn('matches', 'decision_summary', "TEXT NOT NULL DEFAULT ''");
-  db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_matches_order_unique ON matches(order_id)');
-  db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_matches_active_visitor_unique ON matches(visitor_id) WHERE active = 1');
+  try {
+    db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_matches_order_unique ON matches(order_id)');
+  } catch (_e) {
+    // Index may conflict with existing duplicate order_id rows – not fatal
+  }
+  try {
+    db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_matches_active_visitor_unique ON matches(visitor_id) WHERE active = 1');
+  } catch (_e) {
+    // Existing data has duplicate active visitor_ids – deduplicate by keeping the newest match per visitor
+    try {
+      db.exec(`
+        UPDATE matches SET active = 0, released_reason = 'migration_dedup'
+        WHERE active = 1 AND id NOT IN (
+          SELECT MAX(id) FROM matches WHERE active = 1 GROUP BY visitor_id
+        )
+      `);
+      db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_matches_active_visitor_unique ON matches(visitor_id) WHERE active = 1');
+    } catch (e2) {
+      console.warn('[init] Could not create idx_matches_active_visitor_unique after dedup:', e2.message);
+    }
+  }
 }
 
 module.exports = { initDatabase };
