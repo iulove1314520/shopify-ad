@@ -1590,7 +1590,7 @@ async function handleRevokeMatch(orderId, button) {
       {
         token,
         method: 'POST',
-        body: JSON.stringify({ reason: '前端手动撤销' }),
+        body: { reason: '前端手动撤销' },
       }
     );
 
