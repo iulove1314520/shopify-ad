@@ -1337,6 +1337,11 @@ function renderVisitors(container, rows, emptyTitle, emptyMessage) {
   feedList.className = 'visitor-list-grid';
 
   rows.forEach((row, index) => {
+    const trafficLabel = row.traffic_label || '广告流量';
+    const trafficReason = row.traffic_reason || '';
+    const uaSummary = row.ua_summary || '未解析出可靠的终端信息';
+    const uaRisk = row.ua_risk || '';
+
     const card = document.createElement('div');
     card.className = 'visitor-ui-card glass-panel';
     card.style.animationDelay = `${index * 0.05}s`;
@@ -1358,6 +1363,11 @@ function renderVisitors(container, rows, emptyTitle, emptyMessage) {
            <span class="v-lbl">FBCLID</span>
            <span class="v-val mono ${!row.fbclid ? 'muted' : ''}">${escapeHtml(row.fbclid || '未捕获')}</span>
         </div>
+        <div class="v-tag-grp ${row.is_test_traffic ? 'is-test' : ''}">
+           <span class="v-lbl">流量标记</span>
+           <span class="v-val">${escapeHtml(trafficLabel)}</span>
+           ${trafficReason ? `<span class="v-note">${escapeHtml(trafficReason)}</span>` : ''}
+        </div>
       </div>
       <div class="vis-ft">
         <div class="v-dev-row">
@@ -1366,7 +1376,10 @@ function renderVisitors(container, rows, emptyTitle, emptyMessage) {
         </div>
         <div class="v-dev-ua">
            <span class="v-dev-lbl" style="margin-bottom:4px; display:block;">终端指纹探测 (User Agent)</span>
-           <div class="ua-text">${escapeHtml(row.user_agent || '无设备解析')}</div>
+           <div class="ua-summary">${escapeHtml(uaSummary)}</div>
+           <div class="ua-meta">${escapeHtml([row.ua_device, row.ua_os, row.ua_browser].filter(Boolean).join(' / '))}</div>
+           ${uaRisk ? `<div class="ua-note">${escapeHtml(uaRisk)}</div>` : ''}
+           <div class="ua-text">${escapeHtml(row.user_agent || '未捕获 User-Agent')}</div>
         </div>
       </div>
     `;

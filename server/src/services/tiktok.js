@@ -9,6 +9,7 @@ const {
   createSuccessResult,
   createFailureResult,
 } = require('./callback-utils');
+const { pickBestUserAgent } = require('../utils/user-agent');
 
 function parseOrderPayload(order) {
   try {
@@ -178,13 +179,19 @@ function buildContext(payload, visitor, ttclid) {
     context.ip = ip;
   }
 
-  const userAgent = pickFirstText(
-    visitor?.user_agent,
-    clientDetails?.user_agent,
-    clientDetails?.browser_user_agent,
-    clientDetails?.http_user_agent,
-    payload?.user_agent
-  );
+  const userAgent = pickBestUserAgent([
+    { value: visitor?.user_agent, source: 'visitor' },
+    { value: clientDetails?.user_agent, source: 'client_details_user_agent' },
+    {
+      value: clientDetails?.browser_user_agent,
+      source: 'client_details_browser_user_agent',
+    },
+    {
+      value: clientDetails?.http_user_agent,
+      source: 'client_details_http_user_agent',
+    },
+    { value: payload?.user_agent, source: 'payload_user_agent' },
+  ]).value;
   if (userAgent) {
     context.user_agent = userAgent;
   }

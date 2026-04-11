@@ -1,4 +1,5 @@
 const crypto = require('node:crypto');
+const { getRealIp } = require('./ip');
 
 function normalizeTraceId(value) {
   const text = String(value || '')
@@ -83,11 +84,11 @@ function requestLogger(req, res, next) {
     logInfo(
       'request.completed',
       withTraceId(getTraceId(req), {
-      method: req.method,
-      path: req.originalUrl,
-      statusCode: res.statusCode,
-      durationMs: Date.now() - startedAt,
-      ip: req.ip,
+        method: req.method,
+        path: req.originalUrl,
+        statusCode: res.statusCode,
+        durationMs: Date.now() - startedAt,
+        ip: getRealIp(req),
       })
     );
   });

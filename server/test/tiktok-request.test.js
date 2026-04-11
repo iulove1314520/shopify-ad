@@ -95,3 +95,68 @@ test('sendToTikTok 会补齐 event_source、event_id、ip、user_agent 和 page 
     context.cleanup();
   }
 });
+
+test('sendToTikTok 会优先选择信息更完整的 User-Agent 作为回传上下文', async () => {
+  const context = createTestContext({
+    TIKTOK_PIXEL_ID: 'CKN3ABRC77U4JN785N60',
+    TIKTOK_ACCESS_TOKEN: 'demo-token',
+    TIKTOK_PAGE_URL_BASE: 'https://shop.example.com',
+  });
+  const originalPost = axios.post;
+  let capturedRequest = null;
+
+  axios.post = async (url, body, config) => {
+    capturedRequest = { url, body, config };
+    return {
+      status: 200,
+      data: {
+        code: 0,
+        message: 'ok',
+      },
+    };
+  };
+
+  try {
+    const { sendToTikTok } = context.requireServer('services/tiktok');
+
+    await sendToTikTok(
+      {
+        shopify_order_id: 'order_tiktok_ua_choice',
+        created_at: '2026-04-02T07:27:50.414Z',
+        total_price: 259170,
+        currency: 'IDR',
+        raw_payload: JSON.stringify({
+          client_details: {
+            user_agent:
+              'Mozilla/5.0 (Linux; Android 14; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36',
+          },
+          line_items: [
+            {
+              title: 'Demo Shelf',
+              quantity: 1,
+              price: '259170.00',
+              product_id: 'shelf-001',
+            },
+          ],
+        }),
+      },
+      'E.C.P.v3fQ2RHacdksKfofPmlyuStIIHJ4Af1tKYxF9zz2c2PLx1Oaw15oHpcfl5AH',
+      {
+        visitor: {
+          ip: '198.51.100.24',
+          user_agent: 'Mozilla/5.0',
+          product_id: '/products/demo-shelf',
+        },
+      }
+    );
+
+    assert.ok(capturedRequest);
+    assert.equal(
+      capturedRequest.body.data[0].context.user_agent,
+      'Mozilla/5.0 (Linux; Android 14; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36'
+    );
+  } finally {
+    axios.post = originalPost;
+    context.cleanup();
+  }
+});

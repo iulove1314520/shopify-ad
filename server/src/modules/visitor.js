@@ -2,6 +2,8 @@ const { db } = require('../db/client');
 const { env } = require('../config/env');
 const { getRealIp } = require('../utils/ip');
 const { resolveLimit } = require('../utils/pagination');
+const { classifyVisitorTraffic } = require('../utils/traffic-labels');
+const { analyzeUserAgent } = require('../utils/user-agent');
 
 function toIsoString(value, fallback) {
   const date = new Date(value);
@@ -90,7 +92,26 @@ function listVisitors(req, res, next) {
       )
       .all(resolveLimit(req.query.limit));
 
-    res.json(rows);
+    res.json(
+      rows.map((row) => {
+        const traffic = classifyVisitorTraffic(row);
+        const userAgent = analyzeUserAgent(row.user_agent);
+
+        return {
+          ...row,
+          is_test_traffic: traffic.isTestTraffic,
+          traffic_label: traffic.trafficLabel,
+          traffic_reason: traffic.trafficReason,
+          ua_device: userAgent.device,
+          ua_os: userAgent.os,
+          ua_browser: userAgent.browser,
+          ua_app: userAgent.app,
+          ua_summary: userAgent.summary,
+          ua_risk: userAgent.risk,
+          ua_confidence: userAgent.confidence,
+        };
+      })
+    );
   } catch (error) {
     next(error);
   }

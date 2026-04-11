@@ -8,6 +8,7 @@ const {
   createSuccessResult,
   createFailureResult,
 } = require('./callback-utils');
+const { pickBestUserAgent } = require('../utils/user-agent');
 
 async function sendToFacebook(order, fbclid, callbackContext = {}) {
   const visitor = callbackContext?.visitor || null;
@@ -32,11 +33,19 @@ async function sendToFacebook(order, fbclid, callbackContext = {}) {
     clientDetails?.browser_ip ||
     ''
   ).trim();
-  const clientUserAgent = (
-    visitor?.user_agent ||
-    clientDetails?.user_agent ||
-    ''
-  ).trim();
+  const clientUserAgent = pickBestUserAgent([
+    { value: visitor?.user_agent, source: 'visitor' },
+    { value: clientDetails?.user_agent, source: 'client_details_user_agent' },
+    {
+      value: clientDetails?.browser_user_agent,
+      source: 'client_details_browser_user_agent',
+    },
+    {
+      value: clientDetails?.http_user_agent,
+      source: 'client_details_http_user_agent',
+    },
+    { value: payload?.user_agent, source: 'payload_user_agent' },
+  ]).value;
 
   // 构建 user_data
   const userData = { fbc: fbclid };

@@ -348,6 +348,7 @@ function loadDashboardApp(options = {}) {
         ' readToken,' +
         ' writeToken,' +
         ' getFilteredRows,' +
+        ' renderVisitors,' +
         ' requestJson,' +
         ' handleRevokeMatch,' +
         ' bindEvents,' +
@@ -568,4 +569,38 @@ test('撤销匹配时请求体只会被序列化一次', async () => {
     revokeCall.options.body,
     JSON.stringify({ reason: '前端手动撤销' })
   );
+});
+
+test('访客卡片会显示测试流量标记和终端解析摘要，而不是只堆原始 UA', () => {
+  const { app, document } = loadDashboardApp();
+  const container = document.getElementById('visitorsTable');
+
+  app.renderVisitors(
+    container,
+    [
+      {
+        ip: '198.51.100.24',
+        timestamp: '2026-04-02T07:27:50.414Z',
+        ttclid: '__CLICKID__',
+        fbclid: '',
+        product_id: '/products/demo-shelf',
+        user_agent:
+          'Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 bytedancewebview Safari/604.1',
+        is_test_traffic: true,
+        traffic_label: '测试流量',
+        traffic_reason: '__CLICKID__ 占位符',
+        ua_summary: 'iPhone · iOS · TikTok 内置浏览器',
+        ua_device: 'iPhone',
+        ua_os: 'iOS',
+        ua_browser: 'TikTok 内置浏览器',
+      },
+    ],
+    '暂无访客记录',
+    '当前没有访客点击。'
+  );
+
+  const html = container.children[0].children[0].children[0].innerHTML;
+  assert.match(html, /测试流量/);
+  assert.match(html, /iPhone · iOS · TikTok 内置浏览器/);
+  assert.match(html, /__CLICKID__ 占位符/);
 });
