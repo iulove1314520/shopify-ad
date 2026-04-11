@@ -29,6 +29,7 @@ test('handleVisitor 会写入访客记录', () => {
       {
         body: {
           ttclid: 'ttclid_demo_001',
+          ttp: 'ttp_cookie_demo_001',
           product_id: '/products/demo-shirt',
           timestamp: '2026-03-28T01:00:00.000Z',
         },
@@ -57,6 +58,7 @@ test('handleVisitor 会写入访客记录', () => {
       .prepare(
         `
           SELECT ttclid, product_id, ip, user_agent
+          , ttp
           FROM visitors
           ORDER BY id DESC
           LIMIT 1
@@ -68,6 +70,7 @@ test('handleVisitor 会写入访客记录', () => {
     assert.equal(saved.product_id, '/products/demo-shirt');
     assert.equal(saved.ip, '203.0.113.9');
     assert.equal(saved.user_agent, 'unit-test-agent');
+    assert.equal(saved.ttp, 'ttp_cookie_demo_001');
   } finally {
     context.cleanup();
   }
@@ -248,6 +251,7 @@ test('listVisitors 会把 __CLICKID__ 标记为测试流量，并返回可读的
       {
         body: {
           ttclid: '__CLICKID__',
+          ttp: 'ttp_cookie_demo_002',
           product_id: '/products/demo-shelf',
           timestamp: '2026-03-28T01:00:00.000Z',
         },
@@ -288,6 +292,7 @@ test('listVisitors 会把 __CLICKID__ 标记为测试流量，并返回可读的
     assert.equal(listResponse.payload[0].is_test_traffic, true);
     assert.equal(listResponse.payload[0].traffic_label, '测试流量');
     assert.match(listResponse.payload[0].traffic_reason, /__CLICKID__/);
+    assert.equal(listResponse.payload[0].ttp, 'ttp_cookie_demo_002');
     assert.equal(listResponse.payload[0].ua_device, 'iPhone');
     assert.equal(listResponse.payload[0].ua_os, 'iOS');
     assert.equal(listResponse.payload[0].ua_browser, 'TikTok 内置浏览器');

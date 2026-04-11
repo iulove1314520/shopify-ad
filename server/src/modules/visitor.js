@@ -26,6 +26,7 @@ function handleVisitor(req, res, next) {
   try {
     const ttclid = String(req.body?.ttclid || '').trim();
     const fbclid = String(req.body?.fbclid || '').trim();
+    const ttp = String(req.body?.ttp || '').trim();
     const userAgent = String(
       req.body?.user_agent || req.get('user-agent') || ''
     ).trim();
@@ -50,15 +51,17 @@ function handleVisitor(req, res, next) {
         INSERT INTO visitors (
           ttclid,
           fbclid,
+          ttp,
           ip,
           timestamp,
           product_id,
           user_agent
-        ) VALUES (?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?)
       `
     ).run(
       ttclid,
       fbclid,
+      ttp,
       getRealIp(req),
       timestamp,
       String(req.body?.product_id || '').trim(),
@@ -80,6 +83,7 @@ function listVisitors(req, res, next) {
             id,
             ttclid,
             fbclid,
+            ttp,
             ip,
             timestamp,
             product_id,
@@ -99,6 +103,7 @@ function listVisitors(req, res, next) {
 
         return {
           ...row,
+          has_ttp: Boolean(String(row.ttp || '').trim()),
           is_test_traffic: traffic.isTestTraffic,
           traffic_label: traffic.trafficLabel,
           traffic_reason: traffic.trafficReason,

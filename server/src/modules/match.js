@@ -125,9 +125,11 @@ function findBestVisitor(order) {
           v.id,
           v.ttclid,
           v.fbclid,
+          v.ttp,
           v.ip,
           v.timestamp,
-          v.product_id
+          v.product_id,
+          v.user_agent
         FROM visitors v
         WHERE
           (v.ttclid <> '' OR v.fbclid <> '')
@@ -318,9 +320,11 @@ function getVisitorById(visitorId) {
           id,
           ttclid,
           fbclid,
+          ttp,
           ip,
           timestamp,
-          product_id
+          product_id,
+          user_agent
         FROM visitors
         WHERE id = ?
         LIMIT 1

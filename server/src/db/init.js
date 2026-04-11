@@ -33,6 +33,7 @@ function initDatabase() {
   const schemaPath = path.resolve(__dirname, 'schema.sql');
   const schema = fs.readFileSync(schemaPath, 'utf8');
   db.exec(schema);
+  ensureColumn('visitors', 'ttp', "TEXT NOT NULL DEFAULT ''");
   ensureColumn('orders', 'status_reason', "TEXT NOT NULL DEFAULT ''");
   ensureColumn('orders', 'last_trace_id', "TEXT NOT NULL DEFAULT ''");
   ensureColumn('webhook_events', 'trace_id', "TEXT NOT NULL DEFAULT ''");

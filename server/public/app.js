@@ -111,6 +111,19 @@ function formatDate(value) {
   }).format(date);
 }
 
+function maskToken(value) {
+  const text = String(value || '').trim();
+  if (!text) {
+    return '未捕获';
+  }
+
+  if (text.length <= 12) {
+    return text;
+  }
+
+  return `${text.slice(0, 6)}...${text.slice(-4)}`;
+}
+
 function readToken() {
   return window.localStorage.getItem(TOKEN_STORAGE_KEY) || '';
 }
@@ -1373,6 +1386,10 @@ function renderVisitors(container, rows, emptyTitle, emptyMessage) {
         <div class="v-dev-row">
            <span class="v-dev-lbl">触点池 (Product ID)</span>
            <span class="v-dev-val mono">${escapeHtml(row.product_id || '未关联具体商品')}</span>
+        </div>
+        <div class="v-dev-row">
+           <span class="v-dev-lbl">TikTok Cookie (ttp)</span>
+           <span class="v-dev-val mono">${escapeHtml(row.ttp ? `已捕获 · ${maskToken(row.ttp)}` : '未捕获')}</span>
         </div>
         <div class="v-dev-ua">
            <span class="v-dev-lbl" style="margin-bottom:4px; display:block;">终端指纹探测 (User Agent)</span>

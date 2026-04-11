@@ -9,6 +9,7 @@ const {
   createSuccessResult,
   createFailureResult,
 } = require('./callback-utils');
+const { buildHashedMatchKeys } = require('../utils/tiktok-match-keys');
 const { pickBestUserAgent } = require('../utils/user-agent');
 
 function parseOrderPayload(order) {
@@ -201,6 +202,11 @@ function buildContext(payload, visitor, ttclid) {
     context.page = page;
   }
 
+  const user = buildHashedMatchKeys(payload, visitor);
+  if (Object.keys(user).length > 0) {
+    context.user = user;
+  }
+
   return context;
 }
 
@@ -255,6 +261,10 @@ async function sendToTikTok(order, ttclid, callbackContext = {}) {
     clickId: maskValue(ttclid),
     hasIp: Boolean(firstEvent.context?.ip),
     hasUserAgent: Boolean(firstEvent.context?.user_agent),
+    hasEmail: Boolean(firstEvent.context?.user?.email),
+    hasPhone: Boolean(firstEvent.context?.user?.phone_number),
+    hasExternalId: Boolean(firstEvent.context?.user?.external_id),
+    hasTtp: Boolean(firstEvent.context?.user?.ttp),
     pageUrl: firstEvent.context?.page?.url || '',
     contentCount: Array.isArray(firstEvent.properties?.contents)
       ? firstEvent.properties.contents.length
