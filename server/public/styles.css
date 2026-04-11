@@ -318,6 +318,11 @@ body.aurora-theme {
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
 }
+
+/* Prevent body scroll & scrollbar shift when login overlay is visible */
+body.login-active {
+  overflow: hidden;
+}
 .login-card {
   position: relative;
   z-index: 1;
@@ -377,6 +382,21 @@ body.aurora-theme {
 }
 .login-card-fields .input-glass input {
   font-size: 0.9rem;
+}
+/* Suppress ALL blue focus indicators on login modal inputs */
+.login-card-fields .input-glass:focus-within {
+  border-color: rgba(255, 255, 255, 0.12) !important;
+  box-shadow: inset 0 2px 4px rgba(0,0,0,0.2) !important;
+  background: rgba(0, 0, 0, 0.35) !important;
+  outline: none !important;
+}
+.login-card-fields .input-glass input,
+.login-card-fields .input-glass input:focus,
+.login-card-fields .input-glass input:focus-visible,
+.login-card-fields .input-glass input:focus-within {
+  outline: none !important;
+  box-shadow: none !important;
+  border: none !important;
 }
 .login-card-btn {
   width: 100%;
@@ -444,6 +464,7 @@ body.aurora-theme {
 }
 .btn-logout:active { transform: scale(0.96); }
 .btn-logout svg { flex-shrink: 0; }
+.btn-logout { pointer-events: auto; }
 
 /* Enhanced input field */
 .input-glass { 

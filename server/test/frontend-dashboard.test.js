@@ -274,6 +274,9 @@ function loadDashboardApp(options = {}) {
   document.registerSelector('.sidebar', sidebar);
   document.registerSelector('.scroll-canvas', scrollCanvas);
   document.registerSelector('.cleanup-tab', []);
+
+  // Provide document.body for showLoginModal/hideLoginModal body class toggling
+  document.body = createElement(document, { tagName: 'body' });
   document.registerSelector('.cleanup-tab-content', []);
   document.registerSelector('.nav-item', []);
   document.registerSelector('.page-view', []);
@@ -351,6 +354,8 @@ function loadDashboardApp(options = {}) {
         ' requestJson,' +
         ' handleRevokeMatch,' +
         ' handleLogout,' +
+        ' showLoginModal,' +
+        ' hideLoginModal,' +
         ' bindEvents,' +
         ' bootstrapAuth,' +
         ' refreshDashboard' +

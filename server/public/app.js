@@ -930,15 +930,25 @@ function bootstrapAuth() {
   updatePurgeAllUi(null);
 
   if (token) {
-    elements.loginModal.hidden = true;
-    elements.logoutBtn.hidden = false;
+    hideLoginModal();
     setAuthStatus('已登录，正在加载数据...', 'success');
     return;
   }
 
+  showLoginModal();
+  setAuthStatus('请登录以查看业务数据。', 'warning');
+}
+
+function showLoginModal() {
   elements.loginModal.hidden = false;
   elements.logoutBtn.hidden = true;
-  setAuthStatus('请登录以查看业务数据。', 'warning');
+  document.body.classList.add('login-active');
+}
+
+function hideLoginModal() {
+  elements.loginModal.hidden = true;
+  elements.logoutBtn.hidden = false;
+  document.body.classList.remove('login-active');
 }
 
 async function handleLogin() {
@@ -961,8 +971,7 @@ async function handleLogin() {
 
     if (result?.token) {
       writeToken(result.token);
-      elements.loginModal.hidden = true;
-      elements.logoutBtn.hidden = false;
+      hideLoginModal();
       setAuthStatus('登录成功，正在加载数据...', 'success');
       refreshDashboard();
     }
@@ -981,8 +990,7 @@ function handleLogout() {
   state.data = createEmptyBusinessData();
   state.showOnlyFailures = false;
   state.cleanupInputsDirty = false;
-  elements.loginModal.hidden = false;
-  elements.logoutBtn.hidden = true;
+  showLoginModal();
   clearBusinessViews('请登录以查看业务数据。');
   updateFilterUi();
   setAuthStatus('已退出登录。', 'warning');
@@ -1689,8 +1697,7 @@ async function refreshDashboard() {
     state.data = { system, stats, orders, callbacks, matches, events, visitors };
     updateSystemDetail(system);
     renderBusinessViews();
-    elements.loginModal.hidden = true;
-    elements.logoutBtn.hidden = false;
+    hideLoginModal();
     setAuthStatus('数据已全部刷新成功。', 'success');
     startAutoRefresh();
   } catch (error) {
@@ -1699,8 +1706,7 @@ async function refreshDashboard() {
       return;
     }
     state.data = createEmptyBusinessData();
-    elements.loginModal.hidden = false;
-    elements.logoutBtn.hidden = true;
+    showLoginModal();
     clearBusinessViews('登录已失效或网络异常，请重新登录。');
     updateFilterUi();
     setAuthStatus(`读取数据报错：${error.message}`, 'danger');
