@@ -1104,58 +1104,69 @@ function renderCallbacks(container, rows, emptyTitle, emptyMessage) {
   }
   const frag = document.createDocumentFragment();
   const feedList = document.createElement('div');
-  feedList.className = 'callback-list-grid';
+  feedList.className = 'cb-feed';
 
   rows.forEach((row, index) => {
     const card = document.createElement('div');
-    card.className = 'callback-ui-card glass-panel';
-    card.style.animationDelay = `${index * 0.05}s`;
+    card.className = 'cb-card glass-panel';
+    card.style.animationDelay = `${index * 0.04}s`;
 
     const statusBadge = badge(row.status);
     const platformBadge = badge(row.platform, row.platform || '-');
-    const triggerSource = row.trigger_source === 'manual_retry' ? '手动重试' : '自动处理';
-    const triggerBadge = badge(row.trigger_source, triggerSource);
+    const triggerLabel = row.trigger_source === 'manual_retry' ? '手动' : '自动';
+    const httpLabel = row.http_status ? `HTTP ${row.http_status}` : '';
+
+    // Order ID display — combine system ID + Shopify human-readable number
+    const orderName = row.shopify_order_name
+      ? `<span class="cb-shopify-name">${escapeHtml(row.shopify_order_name)}</span>`
+      : '';
+    const orderIdDisplay = `<span class="cb-order-id mono">${escapeHtml(row.order_id)}</span>${orderName}`;
+
+    // Footer: only show if there's response or error data
+    const hasFooter = row.response_summary || row.error_message || row.trace_id;
+    let footerHtml = '';
+    if (hasFooter) {
+      const detailItems = [];
+      if (row.trace_id) {
+        detailItems.push(`<div class="cb-detail-row"><span class="cb-dl">链路</span><span class="cb-dv mono">${escapeHtml(maskToken(row.trace_id))}</span></div>`);
+      }
+      if (row.response_summary) {
+        detailItems.push(`<div class="cb-detail-row"><span class="cb-dl">返回值</span><span class="cb-dv mono">${escapeHtml(row.response_summary.length > 80 ? row.response_summary.slice(0, 80) + '…' : row.response_summary)}</span></div>`);
+      }
+      if (row.error_message) {
+        detailItems.push(`<div class="cb-detail-row cb-detail-error"><span class="cb-dl">错误</span><span class="cb-dv mono">${escapeHtml(row.error_message)}</span></div>`);
+      }
+      footerHtml = `
+        <details class="cb-expand">
+          <summary>
+            <span class="cb-expand-label">${row.error_message ? '⚠ 查看错误详情' : '排查明细'}</span>
+            <svg class="cb-expand-chevron" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+          </summary>
+          <div class="cb-detail-body">${detailItems.join('')}</div>
+        </details>
+      `;
+    }
 
     card.innerHTML = `
-      <div class="cb-hd">
-        <div class="cb-platform">
+      <div class="cb-row-hd">
+        <div class="cb-row-left">
           ${platformBadge}
-          <span class="cb-time">${escapeHtml(formatDate(row.callback_time))}</span>
+          ${statusBadge}
+          ${httpLabel ? `<span class="cb-http-code mono">${escapeHtml(httpLabel)}</span>` : ''}
         </div>
-        <div class="cb-status">${statusBadge}</div>
+        <span class="cb-ts">${escapeHtml(formatDate(row.callback_time))}</span>
       </div>
-      <div class="cb-bd">
-        <div class="cb-meta-row">
-          <span class="cb-meta-label">关连订单号</span>
-          <span class="cb-meta-val mono" style="font-size:1.1rem; color:var(--text-main);">${escapeHtml(row.order_id)}</span>
+      <div class="cb-row-body">
+        <div class="cb-order-line">
+          <span class="cb-order-label">关联订单</span>
+          ${orderIdDisplay}
         </div>
-        <div class="cb-metrics">
-          <div class="cb-metric-item">
-            <span class="cb-meta-label">触发来源</span>
-            <div class="cb-meta-val">${triggerBadge}</div>
-          </div>
-          <div class="cb-metric-item">
-            <span class="cb-meta-label">尝试发送次数</span>
-            <div class="cb-meta-val mono" style="font-weight:600; font-size:1rem; color:var(--text-main);">#${escapeHtml(row.attempt_number || '-')}</div>
-          </div>
-        </div>
-        <div class="cb-meta-row" style="margin-top: 4px;">
-          <span class="cb-meta-label">系统排查链路编号</span>
-          <div class="cb-meta-val">${renderTextDetail(row.trace_id, '暂无')}</div>
+        <div class="cb-meta-strip">
+          <span class="cb-chip">${escapeHtml(triggerLabel)}</span>
+          <span class="cb-chip mono">尝试 #${escapeHtml(String(row.attempt_number || '1'))}</span>
         </div>
       </div>
-      <div class="cb-ft ${row.error_message ? 'has-error' : ''}">
-        <div class="cb-detail-block">
-          <span class="cb-detail-title">接口最终返回值</span>
-          ${renderTextDetail(row.response_summary, '无返回值')}
-        </div>
-        ${row.error_message ? `
-        <div class="cb-detail-block error-block">
-          <span class="cb-detail-title" style="color:var(--danger);">网络或逻辑阻断报错分析</span>
-          <div class="wrap mono" style="color:var(--danger); background:rgba(255,69,58,0.1); padding:10px; border-radius:8px; font-size:0.85rem; margin-top:6px;">${escapeHtml(row.error_message)}</div>
-        </div>
-        ` : ''}
-      </div>
+      ${footerHtml}
     `;
 
     feedList.appendChild(card);
@@ -1165,6 +1176,7 @@ function renderCallbacks(container, rows, emptyTitle, emptyMessage) {
   container.innerHTML = '';
   container.appendChild(frag);
 }
+
 
 function translateMatchMode(mode) {
   if (!mode) return '-';
@@ -1199,6 +1211,15 @@ function renderMatches(container, rows, emptyTitle, emptyMessage) {
       ? '<span class="badge badge-success">占用中</span>'
       : '<span class="badge badge-danger">已释放</span>';
 
+    // Parse signals
+    const signalsRaw = row.match_signals || '';
+    const signalTokens = String(signalsRaw)
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
+    const translatedSignals = signalTokens.map(translateSignalToken);
+    const signalsCount = translatedSignals.length;
+
     let revokeHtml = '';
     if (isActive) {
       revokeHtml = `
@@ -1213,69 +1234,94 @@ function renderMatches(container, rows, emptyTitle, emptyMessage) {
       `;
     }
 
+    // Compact signals (collapsible)
+    let signalsHtml = '';
+    if (signalsCount > 0) {
+      signalsHtml = `
+      <details class="match-signals-ft">
+        <summary>
+          <div class="m-signals-hd">
+            <span class="m-signals-icon">
+              <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+            </span>
+            <span class="m-signals-title">证据链</span>
+            <span class="m-signals-count">${signalsCount} 项</span>
+          </div>
+          <svg class="m-signals-chevron" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+        </summary>
+        <div class="m-signals-detail">
+          <div class="m-signals-list">
+            ${translatedSignals.map((s) => `<span class="m-signal-tag">${escapeHtml(s)}</span>`).join('')}
+          </div>
+        </div>
+      </details>`;
+    }
+
+    // Decision summary - compact inline
+    let decisionHtml = '';
+    if (row.decision_summary) {
+      decisionHtml = `
+      <div class="m-decision-zone">
+        <div class="m-decision-title">决策摘要</div>
+        ${renderReasonDetail(row.decision_summary, '暂无')}
+      </div>`;
+    }
+
     card.innerHTML = `
       <div class="match-hd">
-        <div class="m-point">
-          <span class="m-point-lbl">订单溯源 ID</span>
-          <span class="m-point-val mono">${escapeHtml(row.order_id)}</span>
+        <div class="match-hd-left">
+          <span class="match-hd-tag">订单 ID</span>
+          <span class="match-hd-oid mono">${escapeHtml(row.order_id)}</span>
         </div>
-        <div class="m-connector">
-          <svg viewBox="0 0 24 24" width="16" height="16" style="opacity:0.5; color:var(--glow-cyan);" stroke="currentColor" fill="none" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>
-        </div>
-        <div class="m-point m-right">
-          <span class="m-point-lbl">访客归因</span>
-          <span class="m-point-val">${platformBadge}</span>
+        <div class="match-hd-right">
+          ${platformBadge}
+          ${activeLabel}
         </div>
       </div>
-      
+
       <div class="match-bd">
-         <div class="m-score-hub">
-           <div class="m-metric">
-              <span class="m-metric-title">匹配分</span>
-              <span class="m-metric-big mono">${scoreVal}</span>
-           </div>
-           <div class="m-metric">
-              <span class="m-metric-title">可信度</span>
-              <div class="m-metric-badge" style="margin-top:2px;">${confidenceBadge}</div>
-           </div>
-           <div class="m-metric">
-              <span class="m-metric-title">匹配路径</span>
-              <div class="m-metric-badge" style="margin-top:2px;">${modeBadge}</div>
-           </div>
-           <div class="m-metric">
-              <span class="m-metric-title">领先分差</span>
-              <span class="m-metric-norm mono">${escapeHtml(gapVal)}</span>
-           </div>
-           <div class="m-metric">
-              <span class="m-metric-title">点击时差</span>
-              <span class="m-metric-norm mono">${escapeHtml(row.time_diff_seconds)}<small>s</small></span>
-           </div>
-           <div class="m-metric">
-              <span class="m-metric-title">占用状态</span>
-              <div class="m-metric-badge" style="margin-top:2px;">${activeLabel}</div>
-           </div>
-         </div>
-         
-         <div class="m-ident-row">
-            <span class="m-ident-lbl">追踪码 (Click ID):</span>
-            <span class="m-ident-val mono">${escapeHtml(row.click_id)}</span>
-         </div>
-         <div class="m-ident-row">
-            <span class="m-ident-lbl">快照时间:</span>
-            <span class="m-ident-val">${escapeHtml(formatDate(row.match_time))}</span>
-         </div>
-         ${row.decision_summary ? `
-         <div class="m-ident-row">
-            <span class="m-ident-lbl">决策摘要:</span>
-            <span class="m-ident-val">${renderReasonDetail(row.decision_summary, '暂无')}</span>
-         </div>
-         ` : ''}
+        <div class="m-metrics-strip">
+          <div class="m-metric-cell m-metric-score">
+            <span class="m-metric-num mono">${scoreVal}</span>
+            <span class="m-metric-lbl">匹配分</span>
+          </div>
+          <div class="m-metric-cell">
+            <div class="m-metric-badge">${confidenceBadge}</div>
+            <span class="m-metric-lbl">可信度</span>
+          </div>
+          <div class="m-metric-cell">
+            <div class="m-metric-badge">${modeBadge}</div>
+            <span class="m-metric-lbl">路径</span>
+          </div>
+          <div class="m-metric-cell">
+            <span class="m-metric-num mono">${escapeHtml(gapVal)}</span>
+            <span class="m-metric-lbl">领先分差</span>
+          </div>
+          <div class="m-metric-cell">
+            <span class="m-metric-num mono">${escapeHtml(row.time_diff_seconds)}<small>s</small></span>
+            <span class="m-metric-lbl">时间差</span>
+          </div>
+        </div>
+
+        <div class="m-data-rows">
+          <div class="m-data-row">
+            <span class="m-data-label">追踪码</span>
+            <span class="m-data-value mono">${escapeHtml(maskToken(row.click_id))}</span>
+          </div>
+          ${row.visitor_ip ? `
+          <div class="m-data-row">
+            <span class="m-data-label">绑定 IP</span>
+            <span class="m-data-value mono">${escapeHtml(row.visitor_ip)}</span>
+          </div>` : ''}
+          <div class="m-data-row">
+            <span class="m-data-label">快照时间</span>
+            <span class="m-data-value">${escapeHtml(formatDate(row.match_time))}</span>
+          </div>
+        </div>
       </div>
-      
-      <div class="match-ft">
-        <span class="m-ft-title">命中证据链（Signals）</span>
-        ${renderTextDetail(translateReasonValue('signals', row.match_signals), '暂无详细证据链记录')}
-      </div>
+
+      ${signalsHtml}
+      ${decisionHtml}
       ${revokeHtml ? `<div class="match-action-ft">${revokeHtml}</div>` : ''}
     `;
 
@@ -1347,58 +1393,113 @@ function renderVisitors(container, rows, emptyTitle, emptyMessage) {
   }
   const frag = document.createDocumentFragment();
   const feedList = document.createElement('div');
-  feedList.className = 'visitor-list-grid';
+  feedList.className = 'vis-feed';
 
   rows.forEach((row, index) => {
     const trafficLabel = row.traffic_label || '广告流量';
     const trafficReason = row.traffic_reason || '';
     const uaSummary = row.ua_summary || '未解析出可靠的终端信息';
     const uaRisk = row.ua_risk || '';
+    const isTest = row.is_test_traffic;
+    const hasTtclid = Boolean(row.ttclid);
+    const hasFbclid = Boolean(row.fbclid);
+
+    // Determine which platform badge to show
+    let platformBadge = '';
+    if (hasTtclid && hasFbclid) {
+      platformBadge = '<span class="vis-plat-chip vis-plat-tt">TikTok</span><span class="vis-plat-chip vis-plat-fb">Facebook</span>';
+    } else if (hasTtclid) {
+      platformBadge = '<span class="vis-plat-chip vis-plat-tt">TikTok</span>';
+    } else if (hasFbclid) {
+      platformBadge = '<span class="vis-plat-chip vis-plat-fb">Facebook</span>';
+    } else {
+      platformBadge = '<span class="vis-plat-chip vis-plat-none">无广告参数</span>';
+    }
+
+    // Traffic badge
+    const trafficBadge = isTest
+      ? `<span class="vis-traffic-chip vis-traffic-test">${escapeHtml(trafficLabel)}</span>`
+      : `<span class="vis-traffic-chip">${escapeHtml(trafficLabel)}</span>`;
+
+    // IP initials for avatar
+    const ipParts = (row.ip || '0.0').split('.');
+    const ipInitial = ipParts.length >= 2 ? `${ipParts[0]}.${ipParts[1]}` : row.ip || '?';
+
+    // Device icon based on device type
+    const deviceType = String(row.ua_device || '').toLowerCase();
+    let deviceIcon;
+    if (deviceType.includes('mobile') || deviceType.includes('phone') || deviceType.includes('iphone') || deviceType.includes('android')) {
+      deviceIcon = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="2" width="14" height="20" rx="2" ry="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>';
+    } else if (deviceType.includes('tablet') || deviceType.includes('ipad')) {
+      deviceIcon = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="2" width="16" height="20" rx="2" ry="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>';
+    } else {
+      deviceIcon = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>';
+    }
 
     const card = document.createElement('div');
-    card.className = 'visitor-ui-card glass-panel';
-    card.style.animationDelay = `${index * 0.05}s`;
+    card.className = 'vis-card';
+    card.style.animationDelay = `${index * 0.04}s`;
 
     card.innerHTML = `
-      <div class="vis-hd">
-        <div class="vis-ip">
-          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:8px; opacity:0.6;"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/></svg>
-          <span class="mono">${escapeHtml(row.ip || 'Unknown IP')}</span>
+      <div class="vis-card-hd">
+        <div class="vis-hd-ident">
+          <span class="vis-hd-tag">访客 IP</span>
+          <span class="vis-hd-ip mono">${escapeHtml(row.ip || 'Unknown IP')}</span>
         </div>
-        <div class="vis-time">${escapeHtml(formatDate(row.timestamp))}</div>
-      </div>
-      <div class="vis-tags">
-        <div class="v-tag-grp">
-           <span class="v-lbl">TTCLID</span>
-           <span class="v-val mono ${!row.ttclid ? 'muted' : ''}">${escapeHtml(row.ttclid || '未捕获')}</span>
-        </div>
-        <div class="v-tag-grp">
-           <span class="v-lbl">FBCLID</span>
-           <span class="v-val mono ${!row.fbclid ? 'muted' : ''}">${escapeHtml(row.fbclid || '未捕获')}</span>
-        </div>
-        <div class="v-tag-grp ${row.is_test_traffic ? 'is-test' : ''}">
-           <span class="v-lbl">流量标记</span>
-           <span class="v-val">${escapeHtml(trafficLabel)}</span>
-           ${trafficReason ? `<span class="v-note">${escapeHtml(trafficReason)}</span>` : ''}
+        <div class="vis-hd-badges">
+          ${platformBadge}
+          ${trafficBadge}
         </div>
       </div>
-      <div class="vis-ft">
-        <div class="v-dev-row">
-           <span class="v-dev-lbl">触点池 (Product ID)</span>
-           <span class="v-dev-val mono">${escapeHtml(row.product_id || '未关联具体商品')}</span>
+
+      <div class="vis-card-bd">
+        <div class="vis-ts-row">${escapeHtml(formatDate(row.timestamp))}</div>
+
+        <div class="vis-id-grid">
+          <div class="vis-meta-row">
+            <span class="vis-meta-label">TTCLID</span>
+            <span class="vis-meta-value mono ${hasTtclid ? '' : 'vis-empty'}">${hasTtclid ? escapeHtml(maskToken(row.ttclid)) : '未捕获'}</span>
+            ${hasTtclid ? `<span class="vis-id-full" title="${escapeHtml(row.ttclid)}">${escapeHtml(row.ttclid)}</span>` : ''}
+          </div>
+          <div class="vis-meta-row">
+            <span class="vis-meta-label">FBCLID</span>
+            <span class="vis-meta-value mono ${hasFbclid ? '' : 'vis-empty'}">${hasFbclid ? escapeHtml(maskToken(row.fbclid)) : '未捕获'}</span>
+            ${hasFbclid ? `<span class="vis-id-full" title="${escapeHtml(row.fbclid)}">${escapeHtml(row.fbclid)}</span>` : ''}
+          </div>
         </div>
-        <div class="v-dev-row">
-           <span class="v-dev-lbl">TikTok Cookie (ttp)</span>
-           <span class="v-dev-val mono">${escapeHtml(row.ttp ? `已捕获 · ${maskToken(row.ttp)}` : '未捕获')}</span>
+
+        <div class="vis-meta-row">
+          <span class="vis-meta-label">商品触点 (Product ID)</span>
+          <span class="vis-meta-value mono ${row.product_id ? '' : 'vis-empty'}">${escapeHtml(row.product_id || '未关联')}</span>
         </div>
-        <div class="v-dev-ua">
-           <span class="v-dev-lbl" style="margin-bottom:4px; display:block;">终端指纹探测 (User Agent)</span>
-           <div class="ua-summary">${escapeHtml(uaSummary)}</div>
-           <div class="ua-meta">${escapeHtml([row.ua_device, row.ua_os, row.ua_browser].filter(Boolean).join(' / '))}</div>
-           ${uaRisk ? `<div class="ua-note">${escapeHtml(uaRisk)}</div>` : ''}
-           <div class="ua-text">${escapeHtml(row.user_agent || '未捕获 User-Agent')}</div>
+
+        <div class="vis-meta-row">
+          <span class="vis-meta-label">TTP Cookie</span>
+          <span class="vis-meta-value mono ${row.ttp ? '' : 'vis-empty'}">${escapeHtml(row.ttp ? maskToken(row.ttp) : '未捕获')}</span>
         </div>
       </div>
+
+      <details class="vis-card-ua">
+        <summary>
+          <div class="vis-ua-header">
+            <span class="vis-ua-icon">${deviceIcon}</span>
+            <span class="vis-ua-summary">${escapeHtml(uaSummary)}</span>
+            ${uaRisk ? `<span class="vis-ua-risk">${escapeHtml(uaRisk)}</span>` : ''}
+          </div>
+          <svg class="vis-ua-chevron" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+        </summary>
+        <div class="vis-ua-detail">
+          <div class="vis-ua-trio">
+            <span class="vis-ua-trio-item">${escapeHtml(row.ua_device || '-')}</span>
+            <span class="vis-ua-trio-sep">·</span>
+            <span class="vis-ua-trio-item">${escapeHtml(row.ua_os || '-')}</span>
+            <span class="vis-ua-trio-sep">·</span>
+            <span class="vis-ua-trio-item">${escapeHtml(row.ua_browser || '-')}</span>
+          </div>
+          ${trafficReason ? `<div class="vis-ua-traffic-reason">${escapeHtml(trafficReason)}</div>` : ''}
+          <div class="vis-ua-raw mono">${escapeHtml(row.user_agent || '未捕获 User-Agent')}</div>
+        </div>
+      </details>
     `;
     feedList.appendChild(card);
   });

@@ -722,20 +722,22 @@ function listMatches(req, res, next) {
       .prepare(
         `
           SELECT
-            shopify_order_id AS order_id,
-            click_id,
-            platform,
-            confidence,
-            match_score,
-            match_signals,
-            match_time,
-            time_diff_seconds,
-            active,
-            match_mode,
-            lead_score_gap,
-            decision_summary
-          FROM matches
-          ORDER BY match_time DESC
+            m.shopify_order_id AS order_id,
+            m.click_id,
+            m.platform,
+            m.confidence,
+            m.match_score,
+            m.match_signals,
+            m.match_time,
+            m.time_diff_seconds,
+            m.active,
+            m.match_mode,
+            m.lead_score_gap,
+            m.decision_summary,
+            v.ip AS visitor_ip
+          FROM matches m
+          LEFT JOIN visitors v ON v.id = m.visitor_id
+          ORDER BY m.match_time DESC
           LIMIT ?
         `
       )
@@ -753,26 +755,44 @@ function listCallbacks(req, res, next) {
       .prepare(
         `
           SELECT
-            shopify_order_id AS order_id,
-            platform,
-            trigger_source,
-            trace_id,
-            attempt_number,
-            status,
-            retryable,
-            http_status,
-            request_summary,
-            response_summary,
-            error_message,
-            callback_time
-          FROM callbacks
-          ORDER BY callback_time DESC
+            c.shopify_order_id AS order_id,
+            c.platform,
+            c.trigger_source,
+            c.trace_id,
+            c.attempt_number,
+            c.status,
+            c.retryable,
+            c.http_status,
+            c.request_summary,
+            c.response_summary,
+            c.error_message,
+            c.callback_time,
+            o.raw_payload AS order_raw_payload
+          FROM callbacks c
+          LEFT JOIN orders o ON o.shopify_order_id = c.shopify_order_id
+          ORDER BY c.callback_time DESC
           LIMIT ?
         `
       )
       .all(resolveLimit(req.query.limit));
 
-    res.json(rows);
+    // Extract Shopify order_name from the JSON payload for each row
+    const enriched = rows.map((row) => {
+      let shopify_order_name = '';
+      if (row.order_raw_payload) {
+        try {
+          const payload = JSON.parse(row.order_raw_payload);
+          shopify_order_name = payload.name || payload.order_number
+            ? `${payload.name || '#' + payload.order_number}`
+            : '';
+        } catch (_) { /* ignore parse errors */ }
+      }
+      // Remove the heavy raw_payload before sending to frontend
+      const { order_raw_payload, ...rest } = row;
+      return { ...rest, shopify_order_name };
+    });
+
+    res.json(enriched);
   } catch (error) {
     next(error);
   }
