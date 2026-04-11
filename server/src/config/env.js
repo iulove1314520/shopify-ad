@@ -62,6 +62,8 @@ const env = {
   purgeRateLimitMax: toNumber(process.env.PURGE_RATE_LIMIT_MAX, 1),
   defaultListLimit: toNumber(process.env.DEFAULT_LIST_LIMIT, 100),
   maxListLimit: toNumber(process.env.MAX_LIST_LIMIT, 500),
+  adminUsername: (process.env.ADMIN_USERNAME || '').trim(),
+  adminPassword: (process.env.ADMIN_PASSWORD || '').trim(),
   apiAuthToken: process.env.API_AUTH_TOKEN || '',
   shopifyWebhookSecret: process.env.SHOPIFY_WEBHOOK_SECRET || '',
   tiktokPixelId: process.env.TIKTOK_PIXEL_ID || '',
@@ -123,6 +125,19 @@ function validateEnv() {
   ) {
     errors.push(
       'API_AUTH_TOKEN must be configured to a non-default value in production'
+    );
+  }
+
+  if (env.nodeEnv === 'production' && !env.adminUsername) {
+    errors.push('ADMIN_USERNAME must be configured in production');
+  }
+
+  if (
+    env.nodeEnv === 'production' &&
+    (!env.adminPassword || env.adminPassword === 'change_me')
+  ) {
+    errors.push(
+      'ADMIN_PASSWORD must be configured to a non-default value in production'
     );
   }
 

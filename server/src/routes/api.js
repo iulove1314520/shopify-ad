@@ -1,7 +1,7 @@
 const express = require('express');
 
 const { env } = require('../config/env');
-const { requireApiAuth } = require('../utils/auth');
+const { requireApiAuth, handleLogin } = require('../utils/auth');
 const { createRateLimiter } = require('../utils/rate-limit');
 const { handleVisitor, listVisitors } = require('../modules/visitor');
 const { listMatches, listCallbacks } = require('../modules/match');
@@ -45,6 +45,13 @@ const revokeMatchRateLimiter = createRateLimiter({
   max: env.retryRateLimitMax,
 });
 
+const loginRateLimiter = createRateLimiter({
+  name: 'login',
+  windowMs: 60000,
+  max: 10,
+});
+
+router.post('/login', loginRateLimiter, handleLogin);
 router.post('/visitor', visitorRateLimiter, handleVisitor);
 router.get('/system', requireApiAuth, getSystemDetail);
 router.post(

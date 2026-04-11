@@ -24,12 +24,12 @@ const state = {
 };
 
 const elements = {
-  tokenInput: document.getElementById('tokenInput'),
-  toggleTokenBtn: document.getElementById('toggleTokenBtn'),
+  usernameInput: document.getElementById('usernameInput'),
+  passwordInput: document.getElementById('passwordInput'),
   toggleSidebarBtn: document.getElementById('toggleSidebarBtn'),
   sidebar: document.querySelector('.sidebar'),
-  saveTokenBtn: document.getElementById('saveTokenBtn'),
-  clearTokenBtn: document.getElementById('clearTokenBtn'),
+  loginBtn: document.getElementById('loginBtn'),
+  logoutBtn: document.getElementById('logoutBtn'),
   refreshBtn: document.getElementById('refreshBtn'),
   openCleanupModalBtn: document.getElementById('openCleanupModalBtn'),
   cleanupModal: document.getElementById('cleanupModal'),
@@ -69,11 +69,12 @@ const elements = {
   failedFilterBtn: document.getElementById('failedFilterBtn'),
   filterStatusText: document.getElementById('filterStatusText'),
   scrollCanvas: document.querySelector('.scroll-canvas'),
-  authModule: document.querySelector('.auth-module'),
+  loginModal: document.getElementById('loginModal'),
 };
 
 const endpointConfig = {
   health: '/health',
+  login: '/api/login',
   system: '/api/system',
   cleanupOldData: '/api/system/cleanup-old-data',
   purgeAllData: '/api/system/purge-all-data',
@@ -142,7 +143,7 @@ function setAuthStatus(text, tone = 'warning') {
     <span class="status-dot ${tone}"></span>
     ${escapeHtml(text)}
   `;
-  elements.authStatus.className = `status-indicator ${tone}`;
+  elements.authStatus.className = `login-card-status ${tone}`;
 }
 
 function translateEnvironment(value) {
@@ -921,20 +922,70 @@ function startAutoRefresh() {
 }
 // ── End Auto-Refresh ───────────────────────────────────────────────────────────
 
-function bootstrapToken() {
+function bootstrapAuth() {
   const token = readToken();
-  elements.tokenInput.value = token;
   syncCleanupInputs(null, true);
   updateCleanupHint(null);
   renderCleanupSummary(null);
   updatePurgeAllUi(null);
 
   if (token) {
-    setAuthStatus('已读取保存的认证令牌。', 'success');
+    elements.loginModal.hidden = true;
+    elements.logoutBtn.hidden = false;
+    setAuthStatus('已登录，正在加载数据...', 'success');
     return;
   }
 
-  setAuthStatus('请先输入令牌验证身份。', 'warning');
+  elements.loginModal.hidden = false;
+  elements.logoutBtn.hidden = true;
+  setAuthStatus('请登录以查看业务数据。', 'warning');
+}
+
+async function handleLogin() {
+  const username = (elements.usernameInput?.value || '').trim();
+  const password = (elements.passwordInput?.value || '').trim();
+
+  if (!username || !password) {
+    setAuthStatus('请输入用户名和密码。', 'warning');
+    return;
+  }
+
+  elements.loginBtn.disabled = true;
+  setAuthStatus('正在登录...', 'warning');
+
+  try {
+    const result = await requestJson(endpointConfig.login, {
+      method: 'POST',
+      body: { username, password },
+    });
+
+    if (result?.token) {
+      writeToken(result.token);
+      elements.loginModal.hidden = true;
+      elements.logoutBtn.hidden = false;
+      setAuthStatus('登录成功，正在加载数据...', 'success');
+      refreshDashboard();
+    }
+  } catch (error) {
+    setAuthStatus(error.message || '登录失败', 'danger');
+  } finally {
+    elements.loginBtn.disabled = false;
+  }
+}
+
+function handleLogout() {
+  stopAutoRefresh();
+  writeToken('');
+  if (elements.usernameInput) elements.usernameInput.value = '';
+  if (elements.passwordInput) elements.passwordInput.value = '';
+  state.data = createEmptyBusinessData();
+  state.showOnlyFailures = false;
+  state.cleanupInputsDirty = false;
+  elements.loginModal.hidden = false;
+  elements.logoutBtn.hidden = true;
+  clearBusinessViews('请登录以查看业务数据。');
+  updateFilterUi();
+  setAuthStatus('已退出登录。', 'warning');
 }
 
 function clearBusinessViews(message) {
@@ -1613,9 +1664,9 @@ async function refreshDashboard() {
 
   if (!token) {
     state.data = createEmptyBusinessData();
-    clearBusinessViews('请输入 API_AUTH_TOKEN 以读取业务数据。');
+    clearBusinessViews('请登录以查看业务数据。');
     updateFilterUi();
-    setAuthStatus('未输入令牌，业务数据已隐藏。', 'warning');
+    setAuthStatus('未登录，请先登录。', 'warning');
     elements.refreshBtn.disabled = false;
     elements.refreshBtn.classList.remove('is-refreshing');
     if (elements.scrollCanvas) elements.scrollCanvas.classList.remove('is-refreshing-data');
@@ -1638,7 +1689,8 @@ async function refreshDashboard() {
     state.data = { system, stats, orders, callbacks, matches, events, visitors };
     updateSystemDetail(system);
     renderBusinessViews();
-    elements.authModule.classList.add('is-authorized');
+    elements.loginModal.hidden = true;
+    elements.logoutBtn.hidden = false;
     setAuthStatus('数据已全部刷新成功。', 'success');
     startAutoRefresh();
   } catch (error) {
@@ -1647,8 +1699,9 @@ async function refreshDashboard() {
       return;
     }
     state.data = createEmptyBusinessData();
-    elements.authModule.classList.remove('is-authorized');
-    clearBusinessViews('由于令牌错误或网络问题，读取数据失败。');
+    elements.loginModal.hidden = false;
+    elements.logoutBtn.hidden = true;
+    clearBusinessViews('登录已失效或网络异常，请重新登录。');
     updateFilterUi();
     setAuthStatus(`读取数据报错：${error.message}`, 'danger');
   } finally {
@@ -1922,49 +1975,21 @@ function bindEvents() {
     });
   }
 
-  const authIconOnly = document.querySelector('.auth-icon-only');
-  if (authIconOnly && elements.sidebar) {
-    authIconOnly.addEventListener('click', () => {
-      elements.sidebar.classList.remove('collapsed');
-      elements.tokenInput.focus();
+  elements.loginBtn.addEventListener('click', handleLogin);
+
+  // Allow Enter key to submit login
+  if (elements.passwordInput) {
+    elements.passwordInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') handleLogin();
+    });
+  }
+  if (elements.usernameInput) {
+    elements.usernameInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') elements.passwordInput?.focus();
     });
   }
 
-  elements.saveTokenBtn.addEventListener('click', () => {
-    const token = elements.tokenInput.value.trim();
-    writeToken(token);
-
-    if (token) {
-      elements.authModule.classList.add('is-authorized');
-      setAuthStatus('已成功保存验证令牌，正在刷新数据...', 'success');
-      refreshDashboard();
-      return;
-    }
-
-    setAuthStatus('令牌为空，已取消验证。', 'warning');
-    refreshDashboard();
-  });
-
-  elements.clearTokenBtn.addEventListener('click', () => {
-    stopAutoRefresh();
-    elements.tokenInput.value = '';
-    writeToken('');
-    state.data = createEmptyBusinessData();
-    state.showOnlyFailures = false;
-    state.cleanupInputsDirty = false;
-    elements.authModule.classList.remove('is-authorized');
-    clearBusinessViews('请输入 API_AUTH_TOKEN 以读取业务数据。');
-    updateFilterUi();
-    setAuthStatus('已清除验证令牌，业务数据已隐藏。', 'warning');
-  });
-
-  elements.toggleTokenBtn.addEventListener('click', () => {
-    const isPassword = elements.tokenInput.type === 'password';
-    elements.tokenInput.type = isPassword ? 'text' : 'password';
-    elements.toggleTokenBtn.innerHTML = isPassword
-      ? '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>'
-      : '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>';
-  });
+  elements.logoutBtn.addEventListener('click', handleLogout);
 
   elements.refreshBtn.addEventListener('click', refreshDashboard);
   if (elements.openCleanupModalBtn) {
@@ -2140,7 +2165,7 @@ function bindEvents() {
   setTimeout(handleRoute, 0);
 }
 
-bootstrapToken();
+bootstrapAuth();
 bindEvents();
 window.addEventListener('beforeunload', stopAutoRefresh);
 refreshDashboard();
