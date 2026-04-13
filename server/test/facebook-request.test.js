@@ -5,6 +5,56 @@ const axios = require('axios');
 
 const { createTestContext } = require('./helpers/test-context');
 
+test('buildFacebookRequestPayload 会构建稳定的 Purchase payload', () => {
+  const context = createTestContext();
+
+  try {
+    const { env } = context.requireServer('config/env');
+    const { buildFacebookRequestPayload } = context.requireServer('services/facebook-request');
+
+    const payload = buildFacebookRequestPayload(
+      {
+        shopify_order_id: 'order_fb_builder_001',
+        created_at: '2026-04-02T07:27:50.414Z',
+        total_price: 259170,
+        currency: 'IDR',
+        raw_payload: JSON.stringify({
+          line_items: [
+            {
+              product_id: 'demo-product-001',
+              quantity: 2,
+              price: '129585.00',
+            },
+          ],
+        }),
+      },
+      'fbclid-demo-builder',
+      {
+        visitor: {
+          ip: '198.51.100.24',
+          user_agent: 'Mozilla/5.0 builder browser',
+        },
+      },
+      env
+    );
+
+    assert.equal(payload.data[0].event_name, 'Purchase');
+    assert.equal(payload.data[0].event_id, 'order_order_fb_builder_001');
+    assert.equal(payload.data[0].action_source, 'website');
+    assert.equal(payload.data[0].user_data.fbc, 'fbclid-demo-builder');
+    assert.equal(payload.data[0].user_data.client_ip_address, '198.51.100.24');
+    assert.equal(
+      payload.data[0].user_data.client_user_agent,
+      'Mozilla/5.0 builder browser'
+    );
+    assert.equal(payload.data[0].custom_data.currency, 'IDR');
+    assert.equal(payload.data[0].custom_data.value, 259170);
+    assert.equal(payload.data[0].custom_data.contents[0].id, 'demo-product-001');
+  } finally {
+    context.cleanup();
+  }
+});
+
 test('sendToFacebook 会优先选择信息更完整的 User-Agent 作为回传上下文', async () => {
   const context = createTestContext({
     FACEBOOK_PIXEL_ID: '1234567890',

@@ -8,85 +8,25 @@ const {
   createSuccessResult,
   createFailureResult,
 } = require('./callback-utils');
-const { pickBestUserAgent } = require('../utils/user-agent');
+const { buildFacebookRequestPayload } = require('./facebook-request');
 
 async function sendToFacebook(order, fbclid, callbackContext = {}) {
-  const visitor = callbackContext?.visitor || null;
-
-  let payload = {};
-  try {
-    payload = JSON.parse(order?.raw_payload || '{}');
-    if (!payload || typeof payload !== 'object') payload = {};
-  } catch (_e) {
-    payload = {};
-  }
-
-  const clientDetails = payload?.client_details || {};
-  const eventTimestamp = Math.floor(
-    new Date(order.created_at).getTime() / 1000
-  );
-
-  // 从访客或订单 payload 中提取 IP 和 User-Agent（提升 Meta 匹配率）
-  const clientIp = (
-    visitor?.ip ||
-    payload?.browser_ip ||
-    clientDetails?.browser_ip ||
-    ''
-  ).trim();
-  const clientUserAgent = pickBestUserAgent([
-    { value: visitor?.user_agent, source: 'visitor' },
-    { value: clientDetails?.user_agent, source: 'client_details_user_agent' },
-    {
-      value: clientDetails?.browser_user_agent,
-      source: 'client_details_browser_user_agent',
-    },
-    {
-      value: clientDetails?.http_user_agent,
-      source: 'client_details_http_user_agent',
-    },
-    { value: payload?.user_agent, source: 'payload_user_agent' },
-  ]).value;
-
-  // 构建 user_data
-  const userData = { fbc: fbclid };
-  if (clientIp) userData.client_ip_address = clientIp;
-  if (clientUserAgent) userData.client_user_agent = clientUserAgent;
-
-  // 构建 contents（产品级归因数据）
-  const lineItems = Array.isArray(payload?.line_items)
-    ? payload.line_items
-    : [];
-  const contents = lineItems
-    .slice(0, 10)
-    .map((item) => ({
-      id: String(item?.product_id || item?.variant_id || item?.sku || ''),
-      quantity: Number(item?.quantity || 1),
-      item_price: Number(item?.price || 0),
-    }))
-    .filter((c) => c.id);
-
-  const customData = {
-    currency: order.currency,
-    value: Number(order.total_price || 0),
-  };
-  if (contents.length > 0) {
-    customData.contents = contents;
-    customData.content_type = 'product';
-  }
-
-  const eventId = `order_${order.shopify_order_id}`;
+  const requestPayload = buildFacebookRequestPayload(order, fbclid, callbackContext, env);
+  const firstEvent = Array.isArray(requestPayload.data) ? requestPayload.data[0] || {} : {};
 
   const requestSummary = summarize({
     orderId: order.shopify_order_id,
     pixelId: env.facebookPixelId,
-    event: 'Purchase',
-    eventId,
+    event: firstEvent.event_name || 'Purchase',
+    eventId: firstEvent.event_id || `order_${order.shopify_order_id}`,
     currency: order.currency,
     value: Number(order.total_price || 0),
     clickId: maskValue(fbclid),
-    hasIp: Boolean(clientIp),
-    hasUserAgent: Boolean(clientUserAgent),
-    contentCount: contents.length,
+    hasIp: Boolean(firstEvent.user_data?.client_ip_address),
+    hasUserAgent: Boolean(firstEvent.user_data?.client_user_agent),
+    contentCount: Array.isArray(firstEvent.custom_data?.contents)
+      ? firstEvent.custom_data.contents.length
+      : 0,
   });
 
   if (!env.facebookPixelId || !env.facebookAccessToken) {
@@ -102,18 +42,7 @@ async function sendToFacebook(order, fbclid, callbackContext = {}) {
     const response = await axios.post(
       `https://graph.facebook.com/v18.0/${env.facebookPixelId}/events`,
       {
-        data: [
-          {
-            event_name: 'Purchase',
-            event_id: eventId,
-            event_time: Number.isFinite(eventTimestamp)
-              ? eventTimestamp
-              : Math.floor(Date.now() / 1000),
-            action_source: 'website',
-            user_data: userData,
-            custom_data: customData,
-          },
-        ],
+        ...requestPayload,
         access_token: env.facebookAccessToken,
       },
       {
@@ -127,4 +56,7 @@ async function sendToFacebook(order, fbclid, callbackContext = {}) {
   }
 }
 
-module.exports = { sendToFacebook };
+module.exports = {
+  buildFacebookRequestPayload,
+  sendToFacebook,
+};

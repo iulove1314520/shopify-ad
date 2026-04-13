@@ -6,6 +6,60 @@ const axios = require('axios');
 
 const { createTestContext } = require('./helpers/test-context');
 
+test('buildTikTokRequestBody 会构建稳定的 Purchase request body', () => {
+  const context = createTestContext({
+    TIKTOK_PIXEL_ID: 'CKN3ABRC77U4JN785N60',
+    TIKTOK_PAGE_URL_BASE: 'https://shop.example.com',
+  });
+
+  try {
+    const { env } = context.requireServer('config/env');
+    const { buildTikTokRequestBody } = context.requireServer('services/tiktok-request');
+
+    const body = buildTikTokRequestBody(
+      {
+        shopify_order_id: 'order_tiktok_builder_001',
+        created_at: '2026-04-02T07:27:50.414Z',
+        total_price: 259170,
+        currency: 'IDR',
+        raw_payload: JSON.stringify({
+          line_items: [
+            {
+              title: 'Demo Shelf',
+              quantity: 1,
+              price: '259170.00',
+              product_id: 'shelf-001',
+            },
+          ],
+        }),
+      },
+      'ttclid-builder-001',
+      {
+        visitor: {
+          ip: '198.51.100.24',
+          user_agent: 'Mozilla/5.0 test browser',
+          product_id: '/products/demo-shelf',
+        },
+      },
+      env
+    );
+
+    assert.equal(body.event_source, 'web');
+    assert.equal(body.pixel_code, 'CKN3ABRC77U4JN785N60');
+    assert.equal(body.data[0].event, 'Purchase');
+    assert.equal(body.data[0].event_id, 'order_order_tiktok_builder_001');
+    assert.equal(body.data[0].context.ip, '198.51.100.24');
+    assert.equal(body.data[0].context.user_agent, 'Mozilla/5.0 test browser');
+    assert.equal(
+      body.data[0].context.page.url,
+      'https://shop.example.com/products/demo-shelf'
+    );
+    assert.equal(body.data[0].properties.contents[0].content_id, 'shelf-001');
+  } finally {
+    context.cleanup();
+  }
+});
+
 test('sendToTikTok 会补齐 event_source、event_id、ip、user_agent 和 page url', async () => {
   const context = createTestContext({
     TIKTOK_PIXEL_ID: 'CKN3ABRC77U4JN785N60',

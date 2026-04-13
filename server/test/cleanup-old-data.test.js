@@ -7,6 +7,51 @@ function daysAgoIso(daysAgo) {
   return new Date(Date.now() - daysAgo * 24 * 60 * 60 * 1000).toISOString();
 }
 
+test('cleanup 内部模块支持显式依赖注入并返回删除摘要', () => {
+  const context = createTestContext({
+    VISITOR_RETENTION_DAYS: 7,
+    BUSINESS_DATA_RETENTION_DAYS: 30,
+  });
+
+  try {
+    const { env } = context.requireServer('config/env');
+    const { cleanupOldDataRecords } = context.requireServer('modules/system/cleanup');
+
+    context.db
+      .prepare(
+        `
+          INSERT INTO visitors (ttclid, fbclid, ip, timestamp, product_id, user_agent)
+          VALUES (?, ?, ?, ?, ?, ?)
+        `
+      )
+      .run(
+        'ttclid_cleanup_internal_old',
+        '',
+        '198.51.100.10',
+        daysAgoIso(10),
+        '/products/internal-cleanup',
+        'cleanup-internal'
+      );
+
+    const result = cleanupOldDataRecords({
+      db: context.db,
+      env,
+      options: {
+        visitorRetentionDays: 7,
+        businessRetentionDays: 30,
+      },
+    });
+
+    assert.equal(result.deleted.visitors, 1);
+    assert.equal(result.deleted.orders, 0);
+    assert.equal(result.deleted.matches, 0);
+    assert.equal(result.deleted.callbacks, 0);
+    assert.equal(result.deleted.webhook_events, 0);
+  } finally {
+    context.cleanup();
+  }
+});
+
 test('cleanupOldDataRecords 会删除超出保留期的旧数据并保留近期记录', () => {
   const context = createTestContext({
     VISITOR_RETENTION_DAYS: 7,

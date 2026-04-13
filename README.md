@@ -43,6 +43,21 @@
 └── README.md
 ```
 
+### Internal Module Layout
+
+- `server/src/bootstrap/`
+  - 负责 HTTP 服务启动、优雅停机和定时维护任务安装
+- `server/src/modules/order/`
+  - 拆分了 Shopify webhook 验签、webhook 事件落库、订单存取、重试和路由处理器
+- `server/src/modules/match/`
+  - 拆分了候选访客查询、未匹配原因摘要、callback 分发和状态写入
+- `server/src/modules/system/`
+  - 拆分了系统详情、保留策略、旧数据清理和全量清空逻辑
+- `server/src/services/tiktok-request.js` / `server/src/services/facebook-request.js`
+  - 只负责平台请求体构造，发送器本身保留在 `tiktok.js` / `facebook.js`
+
+这些内部子模块通过 `modules/order.js`、`modules/match.js`、`modules/system.js` 等 facade 暴露稳定入口，`routes/` 层只保留挂载、鉴权和限流职责。
+
 ## 快速启动
 
 1. 复制环境变量模板并按需要修改：

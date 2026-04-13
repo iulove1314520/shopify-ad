@@ -8,8 +8,10 @@ const TRACKER_PATH = path.join(
   __dirname,
   '..',
   '..',
-  'docx',
-  'shopify-horizon-manual-theme',
+  'docs',
+  'integrations',
+  'shopify',
+  'manual-theme',
   'assets',
   'cpas-visitor-tracker.js'
 );
