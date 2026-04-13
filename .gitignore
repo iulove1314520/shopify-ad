@@ -3,6 +3,9 @@ AGENTS.md
 记录.md
 docx/
 .codex
+docs/integrations/shopify/
+docs/runbooks/tiktok-purchase-single-source.md
+docs/reference/match-mechanism.md
 
 # 本地敏感配置
 .env
