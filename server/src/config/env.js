@@ -20,6 +20,32 @@ function hasValue(value) {
   return Boolean(String(value || '').trim());
 }
 
+function normalizeTikTokPurchaseMode(value) {
+  const raw = String(value || '').trim().toLowerCase();
+  if (!raw) {
+    return {
+      value: 'self_hosted_only',
+      issue: '',
+    };
+  }
+
+  if (raw === 'self_hosted_only' || raw === 'disabled') {
+    return {
+      value: raw,
+      issue: '',
+    };
+  }
+
+  return {
+    value: 'self_hosted_only',
+    issue: `TikTok Purchase 模式无效：${raw}；已回退为 self_hosted_only`,
+  };
+}
+
+const tiktokPurchaseModeConfig = normalizeTikTokPurchaseMode(
+  process.env.TIKTOK_PURCHASE_MODE
+);
+
 const env = {
   nodeEnv: process.env.NODE_ENV || 'production',
   port: toNumber(process.env.PORT, 38417),
@@ -72,6 +98,8 @@ const env = {
   tiktokApiUrl:
     process.env.TIKTOK_API_URL ||
     'https://business-api.tiktok.com/open_api/v1.3/event/track/',
+  tiktokPurchaseMode: tiktokPurchaseModeConfig.value,
+  tiktokPurchaseModeIssue: tiktokPurchaseModeConfig.issue,
   facebookPixelId: process.env.FACEBOOK_PIXEL_ID || '',
   facebookAccessToken: process.env.FACEBOOK_ACCESS_TOKEN || '',
 };
@@ -86,6 +114,10 @@ function getPlatformConfigChecks() {
 
   if (!hasValue(env.tiktokAccessToken)) {
     tiktokIssues.push('缺少 TikTok Access Token');
+  }
+
+  if (env.tiktokPurchaseModeIssue) {
+    tiktokIssues.push(env.tiktokPurchaseModeIssue);
   }
 
   if (!hasValue(env.facebookPixelId)) {
@@ -103,6 +135,7 @@ function getPlatformConfigChecks() {
       configured: tiktokIssues.length === 0,
       pixelIdConfigured: hasValue(env.tiktokPixelId),
       accessTokenConfigured: hasValue(env.tiktokAccessToken),
+      purchaseMode: env.tiktokPurchaseMode,
       issues: tiktokIssues,
     },
     {
@@ -144,4 +177,9 @@ function validateEnv() {
   return errors;
 }
 
-module.exports = { env, validateEnv, getPlatformConfigChecks };
+module.exports = {
+  env,
+  validateEnv,
+  getPlatformConfigChecks,
+  normalizeTikTokPurchaseMode,
+};

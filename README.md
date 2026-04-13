@@ -111,6 +111,7 @@ docker compose exec -T api npm test
 | `TIKTOK_PIXEL_ID` | TikTok Pixel ID |
 | `TIKTOK_ACCESS_TOKEN` | TikTok Access Token |
 | `TIKTOK_PAGE_URL_BASE` | 当访客记录只保存相对路径时，用来拼接 TikTok 所需页面 URL 的基础域名 |
+| `TIKTOK_PURCHASE_MODE` | TikTok Purchase 回传模式，支持 `self_hosted_only`（默认，仅保留自建后端 Purchase）和 `disabled` |
 | `FACEBOOK_PIXEL_ID` | Facebook Pixel ID |
 | `FACEBOOK_ACCESS_TOKEN` | Facebook Access Token |
 

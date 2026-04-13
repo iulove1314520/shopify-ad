@@ -297,3 +297,47 @@ test('sendToTikTok 遇到无法安全规范化的手机号时不会发送 phone_
     context.cleanup();
   }
 });
+
+test('sendToTikTok 在 disabled 模式下会跳过 Purchase 回传并写入本地来源标签', async () => {
+  const context = createTestContext({
+    TIKTOK_PIXEL_ID: 'CKN3ABRC77U4JN785N60',
+    TIKTOK_ACCESS_TOKEN: 'demo-token',
+    TIKTOK_PURCHASE_MODE: 'disabled',
+  });
+  const originalPost = axios.post;
+  let postCallCount = 0;
+
+  axios.post = async () => {
+    postCallCount += 1;
+    return {
+      status: 200,
+      data: {
+        code: 0,
+        message: 'ok',
+      },
+    };
+  };
+
+  try {
+    const { sendToTikTok } = context.requireServer('services/tiktok');
+
+    const result = await sendToTikTok(
+      {
+        shopify_order_id: 'order_tiktok_disabled_mode',
+        created_at: '2026-04-02T07:27:50.414Z',
+        total_price: 259170,
+        currency: 'IDR',
+        raw_payload: JSON.stringify({}),
+      },
+      'E.C.P.disabled.click.id'
+    );
+
+    assert.equal(result.status, 'skipped');
+    assert.equal(postCallCount, 0);
+    assert.match(result.requestSummary, /"purchaseMode":"disabled"/);
+    assert.match(result.requestSummary, /"purchaseSource":"self_hosted_backend"/);
+  } finally {
+    axios.post = originalPost;
+    context.cleanup();
+  }
+});

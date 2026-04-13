@@ -250,6 +250,19 @@ function badge(value, label = translateStatus(value)) {
   return `<span class="badge badge-${getStatusTone(value)}">${escapeHtml(label)}</span>`;
 }
 
+function formatTikTokPurchaseMode(value) {
+  const normalized = String(value || '').trim().toLowerCase();
+  if (normalized === 'self_hosted_only') {
+    return '仅自建后端 Purchase';
+  }
+
+  if (normalized === 'disabled') {
+    return '已禁用后端 Purchase';
+  }
+
+  return value || '-';
+}
+
 function describeReasonKey(key) {
   const dictionary = {
     reason: '未成功原因',
@@ -700,6 +713,15 @@ function renderPlatformStatus(system) {
   listDiv.className = 'status-list';
 
   platforms.forEach((item) => {
+    const purchaseMode =
+      item.id === 'tiktok'
+        ? String(item.purchaseMode || system?.tiktok_purchase_mode || '').trim()
+        : '';
+    const purchaseModeLine = purchaseMode
+      ? `<span class="platform-issues">Purchase 模式：${escapeHtml(purchaseMode)}（${escapeHtml(
+          formatTikTokPurchaseMode(purchaseMode)
+        )}）</span>`
+      : '';
     const itemDiv = document.createElement('div');
     itemDiv.className = 'status-item';
     itemDiv.innerHTML = `
@@ -712,6 +734,7 @@ function renderPlatformStatus(system) {
               : item.issues.join('、')
           )}
         </span>
+        ${purchaseModeLine}
       </div>
       ${badge(item.configured ? 'success' : 'failed', item.configured ? '已就绪' : '待补齐')}
     `;

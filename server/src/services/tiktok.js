@@ -251,6 +251,8 @@ async function sendToTikTok(order, ttclid, callbackContext = {}) {
   const firstEvent = Array.isArray(requestBody.data) ? requestBody.data[0] || {} : {};
   const requestSummary = summarize({
     orderId: order.shopify_order_id,
+    purchaseMode: env.tiktokPurchaseMode,
+    purchaseSource: 'self_hosted_backend',
     pixelCode: env.tiktokPixelId,
     eventSource: requestBody.event_source,
     eventSourceId: env.tiktokPixelId,
@@ -270,6 +272,15 @@ async function sendToTikTok(order, ttclid, callbackContext = {}) {
       ? firstEvent.properties.contents.length
       : 0,
   });
+
+  if (env.tiktokPurchaseMode === 'disabled') {
+    return createSkippedResult(
+      'TikTok',
+      'TikTok purchase callbacks are disabled by configuration',
+      requestSummary,
+      'purchase_mode_disabled'
+    );
+  }
 
   if (!env.tiktokPixelId || !env.tiktokAccessToken) {
     return createSkippedResult(

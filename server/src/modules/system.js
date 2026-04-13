@@ -127,6 +127,7 @@ function buildSystemDetail() {
     retention_policy: getRetentionPolicy(),
     cleanup_limits: getCleanupLimits(),
     dangerous_actions: getDangerousActions(),
+    tiktok_purchase_mode: env.tiktokPurchaseMode,
     platforms: platformChecks,
     warnings: platformChecks
       .filter((item) => !item.configured)
@@ -375,6 +376,7 @@ function getStats(req, res, next) {
 }
 
 module.exports = {
+  buildSystemDetail,
   getHealth,
   getSystemDetail,
   getStats,
