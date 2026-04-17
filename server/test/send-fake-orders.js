@@ -1,23 +1,20 @@
 #!/usr/bin/env node
 /**
- * 假单发送脚本 — 用于测试 TikTok 归因
+ * 假单发送脚本 — 用于激活 TikTok Purchase 付费事件
  *
  * 用法:
  *   node server/test/send-fake-orders.js
  *
- * 说明:
- *   - 使用数据库中真实的 TTCLID（关联到真实访客）
- *   - 构造完整的 Shopify 格式 webhook payload
- *   - 包含所有 EMQ 字段：email / phone / external_id / content_id / value / currency / event_id
- *   - 使用 SHOPIFY_WEBHOOK_SECRET 签名，确保 webhook 验签通过
- *   - 发送到本地 webhook 端点，触发完整匹配→回传流程
+ * 流程:
+ *   1. 先向 /api/visitor 注册 3 个假访客（携带真实格式的 TTCLID）
+ *   2. 等待 2 秒让访客入库
+ *   3. 依次发送 3 个假单到 webhook 端点
+ *   4. 订单的 browser_ip 与对应访客 IP 精确匹配 → 匹配成功 → 触发 TikTok Purchase 回传
  *
- * 匹配策略:
- *   - 每个假单的 browser_ip 与目标访客 IP 一致 → 触发 browser_ip_exact (+25)
- *   - 其他访客因 IP 不匹配得到 browser_ip_mismatch (0分)
- *   - 目标访客总分: time(30) + product(40) + ip(25) = 95
- *   - 其他访客总分: time(30) + product(40) + ip(0) = 70
- *   - 分差 25 ≥ MAIN_MIN_LEAD_GAP(10) ✓ ，确保匹配成功
+ * 匹配评分:
+ *   目标访客: time_close(30) + product_strong(40) + ip_exact(25) = 95 (高置信)
+ *   其他访客: IP 不同 → 70 分
+ *   分差 25 ≥ MIN_LEAD_GAP(10) → 匹配成功 ✓
  */
 
 const crypto = require('node:crypto');
@@ -28,187 +25,248 @@ const WEBHOOK_SECRET = '4f6564e097f41a9887ace8d550936094c6885520b727c1b6da3456d2
 const API_HOST = '127.0.0.1';
 const API_PORT = 38417;
 const WEBHOOK_PATH = '/webhook/orders';
+const VISITOR_PATH = '/api/visitor';
 
-// ─── 假单数据 ─────────────────────────────────────────
-// 选择 FREE 状态的、有不同 IP 的真实访客
-// 订单 created_at 设在目标访客 timestamp 之后 10 分钟内，确保 time_close (+30)
-const FAKE_ORDERS = [
+// ─── 工具函数 ──────────────────────────────────────────
+function generateTtclid() {
+  // 生成类似真实 TikTok Click ID 格式的字符串
+  const prefix = 'E_C_P_';
+  const body = crypto.randomBytes(120).toString('base64url');
+  return `${prefix}${body}`;
+}
+
+function delay(ms) {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
+// ─── 假访客 + 假单数据 ────────────────────────────────────
+// 当前时间为基准，访客在 5 分钟前访问，订单在 "刚刚" 创建
+const NOW = Date.now();
+const VISITOR_TIME_OFFSET_MS = 5 * 60 * 1000; // 访客在 5 分钟前
+
+const SCENARIOS = [
   {
-    // 目标：访客 ID 78 (103.155.191.231, 2026-04-11T07:46:16.210Z)
-    // 该访客有独立 TTCLID 和独立 IP
-    orderId: `FAKETEST_${Date.now()}_A`,
-    orderName: '#TEST-A78',
-    email: 'ika.wijaya.test@gmail.com',
-    phone: '+6281234567890',
-    customerName: { first: 'Ika', last: 'Wijaya' },
-    customerId: 9990000001,
-    totalPrice: '189000.00',
-    currency: 'IDR',
-    financialStatus: 'paid',
-    // IP 与目标访客一致 → browser_ip_exact (+25)
-    ip: '103.155.191.231',
-    userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_3_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.3 Mobile/15E148 Safari/605.1',
-    productId: '9001000001',
-    variantId: '47001000001',
-    productTitle: 'Rak Piring Dapur Stainless Steel Penyimpanan Rak Pengering Piring Rak Mangkuk Piring',
-    sku: 'RAK-SS-001',
-    quantity: 1,
-    price: '189000.00',
-    shippingZip: '60112',
-    shippingCity: 'Surabaya',
-    shippingCountryCode: 'ID',
-    shippingProvince: 'Jawa Timur',
-    shippingAddress1: 'Jl. Raya Darmo No. 88',
-    // 10 分钟后下单
-    createdAt: '2026-04-11T07:56:16.000Z',
-    landingSite: '/products/rak-piring-dapur-stainless-steel-penyimpanan-rak-pengering-piring-rak-mangkuk-piring',
-    referringSite: 'https://www.tiktok.com/',
+    label: 'A',
+    visitorIp: '36.72.214.193',       // 印尼 IP
+    visitorTimestamp: new Date(NOW - VISITOR_TIME_OFFSET_MS).toISOString(),
+    visitorUa: 'Mozilla/5.0 (Linux; Android 14; SM-A546B Build/UP1A.231005.007) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.6261.119 Mobile Safari/537.36',
+    productPage: '/products/rak-piring-dapur-stainless-steel-penyimpanan-rak-pengering-piring-rak-mangkuk-piring',
+    ttclid: generateTtclid(),
+    order: {
+      orderName: '#FAKE-PAY-A',
+      email: 'siti.nurhasanah@gmail.com',
+      phone: '+6281234567001',
+      customerName: { first: 'Siti', last: 'Nurhasanah' },
+      customerId: 8880000001,
+      totalPrice: '225000.00',
+      currency: 'IDR',
+      financialStatus: 'paid',
+      productId: '9001000001',
+      variantId: '47001000001',
+      productTitle: 'Rak Piring Dapur Stainless Steel Penyimpanan Rak Pengering Piring Rak Mangkuk Piring',
+      sku: 'RAK-SS-001',
+      quantity: 1,
+      price: '225000.00',
+      shippingZip: '60234',
+      shippingCity: 'Surabaya',
+      shippingCountryCode: 'ID',
+      shippingProvince: 'Jawa Timur',
+      shippingAddress1: 'Jl. Raya Kenjeran No. 45',
+    },
   },
   {
-    // 目标：访客 ID 77 (182.8.131.23, 2026-04-11T07:43:20.355Z)
-    // 该访客有独立 TTCLID 和独立 IP
-    orderId: `FAKETEST_${Date.now()}_B`,
-    orderName: '#TEST-B77',
-    email: 'dewi.lestari.test@yahoo.co.id',
-    phone: '+6285678901234',
-    customerName: { first: 'Dewi', last: 'Lestari' },
-    customerId: 9990000002,
-    totalPrice: '247500.00',
-    currency: 'IDR',
-    financialStatus: 'paid',
-    ip: '182.8.131.23',
-    userAgent: 'Mozilla/5.0 (Linux; Android 14; SM-A546B Build/UP1A.231005.007) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.6261.119 Mobile Safari/537.36',
-    productId: '9001000002',
-    variantId: '47001000002',
-    productTitle: 'Rak Piring Dapur Stainless Steel Penyimpanan Rak Pengering Piring Rak Mangkuk Piring',
-    sku: 'RAK-SS-PREM-002',
-    quantity: 2,
-    price: '123750.00',
-    shippingZip: '40132',
-    shippingCity: 'Bandung',
-    shippingCountryCode: 'ID',
-    shippingProvince: 'Jawa Barat',
-    shippingAddress1: 'Jl. Asia Afrika No. 56',
-    // 8 分钟后下单
-    createdAt: '2026-04-11T07:51:20.000Z',
-    landingSite: '/products/rak-piring-dapur-stainless-steel-penyimpanan-rak-pengering-piring-rak-mangkuk-piring',
-    referringSite: 'https://www.tiktok.com/',
+    label: 'B',
+    visitorIp: '114.124.198.77',      // 印尼 IP
+    visitorTimestamp: new Date(NOW - VISITOR_TIME_OFFSET_MS - 60000).toISOString(),
+    visitorUa: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_3_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.3 Mobile/15E148 Safari/605.1',
+    productPage: '/products/rak-piring-dapur-stainless-steel-penyimpanan-rak-pengering-piring-rak-mangkuk-piring',
+    ttclid: generateTtclid(),
+    order: {
+      orderName: '#FAKE-PAY-B',
+      email: 'rina.kartika@yahoo.co.id',
+      phone: '+6285678901002',
+      customerName: { first: 'Rina', last: 'Kartika' },
+      customerId: 8880000002,
+      totalPrice: '315000.00',
+      currency: 'IDR',
+      financialStatus: 'paid',
+      productId: '9001000002',
+      variantId: '47001000002',
+      productTitle: 'Rak Piring Dapur Stainless Steel Penyimpanan Rak Pengering Piring Rak Mangkuk Piring',
+      sku: 'RAK-SS-PREM-002',
+      quantity: 2,
+      price: '157500.00',
+      shippingZip: '40132',
+      shippingCity: 'Bandung',
+      shippingCountryCode: 'ID',
+      shippingProvince: 'Jawa Barat',
+      shippingAddress1: 'Jl. Braga No. 88',
+    },
   },
   {
-    // 目标：访客 ID 75 (103.255.132.214, 2026-04-11T07:12:35.469Z)
-    // 该访客有独立 TTCLID 和独立 IP
-    orderId: `FAKETEST_${Date.now()}_C`,
-    orderName: '#TEST-C75',
-    email: 'budi.santoso.test@gmail.com',
-    phone: '+6281345678901',
-    customerName: { first: 'Budi', last: 'Santoso' },
-    customerId: 9990000003,
-    totalPrice: '315000.00',
-    currency: 'IDR',
-    financialStatus: 'paid',
-    ip: '103.255.132.214',
-    userAgent: 'Mozilla/5.0 (Linux; Android 13; Redmi Note 12) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.6099.193 Mobile Safari/537.36',
-    productId: '9001000003',
-    variantId: '47001000003',
-    productTitle: 'Rak Piring Dapur Stainless Steel Penyimpanan Rak Pengering Piring Rak Mangkuk Piring',
-    sku: 'RAK-SS-DLX-003',
-    quantity: 1,
-    price: '315000.00',
-    shippingZip: '10110',
-    shippingCity: 'Jakarta Pusat',
-    shippingCountryCode: 'ID',
-    shippingProvince: 'DKI Jakarta',
-    shippingAddress1: 'Jl. Thamrin No. 12',
-    // 5 分钟后下单
-    createdAt: '2026-04-11T07:17:35.000Z',
-    landingSite: '/products/rak-piring-dapur-stainless-steel-penyimpanan-rak-pengering-piring-rak-mangkuk-piring',
-    referringSite: 'https://www.tiktok.com/',
+    label: 'C',
+    visitorIp: '180.244.133.52',      // 印尼 IP
+    visitorTimestamp: new Date(NOW - VISITOR_TIME_OFFSET_MS - 120000).toISOString(),
+    visitorUa: 'Mozilla/5.0 (Linux; Android 13; Redmi Note 12 Pro) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.6099.193 Mobile Safari/537.36',
+    productPage: '/products/rak-piring-dapur-stainless-steel-penyimpanan-rak-pengering-piring-rak-mangkuk-piring',
+    ttclid: generateTtclid(),
+    order: {
+      orderName: '#FAKE-PAY-C',
+      email: 'agus.pratama@gmail.com',
+      phone: '+6281345678003',
+      customerName: { first: 'Agus', last: 'Pratama' },
+      customerId: 8880000003,
+      totalPrice: '189000.00',
+      currency: 'IDR',
+      financialStatus: 'paid',
+      productId: '9001000003',
+      variantId: '47001000003',
+      productTitle: 'Rak Piring Dapur Stainless Steel Penyimpanan Rak Pengering Piring Rak Mangkuk Piring',
+      sku: 'RAK-SS-DLX-003',
+      quantity: 1,
+      price: '189000.00',
+      shippingZip: '10110',
+      shippingCity: 'Jakarta Pusat',
+      shippingCountryCode: 'ID',
+      shippingProvince: 'DKI Jakarta',
+      shippingAddress1: 'Jl. Sudirman Kav. 52-53',
+    },
   },
 ];
 
-// ─── 构造 Shopify 格式的 Order Payload ─────────────────
-function buildShopifyPayload(order) {
+// ─── Step 1: 注册假访客 ────────────────────────────────────
+function registerVisitor(scenario) {
+  return new Promise((resolve, reject) => {
+    const body = JSON.stringify({
+      ttclid: scenario.ttclid,
+      fbclid: '',
+      ttp: '',
+      user_agent: scenario.visitorUa,
+      timestamp: scenario.visitorTimestamp,
+      product_id: scenario.productPage,
+    });
+
+    const options = {
+      hostname: API_HOST,
+      port: API_PORT,
+      path: VISITOR_PATH,
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(body),
+        'X-Forwarded-For': scenario.visitorIp,
+        'X-Real-IP': scenario.visitorIp,
+      },
+    };
+
+    console.log(`  📝  注册访客 ${scenario.label}:  IP=${scenario.visitorIp}  TTCLID=${scenario.ttclid.substring(0, 30)}...`);
+
+    const req = http.request(options, (res) => {
+      let data = '';
+      res.on('data', (chunk) => { data += chunk; });
+      res.on('end', () => {
+        const ok = res.statusCode === 200;
+        console.log(`      ${ok ? '✅' : '❌'}  HTTP ${res.statusCode} — ${data.substring(0, 200)}`);
+        resolve({ statusCode: res.statusCode, body: data, ok });
+      });
+    });
+
+    req.on('error', (err) => {
+      console.log(`      ❌  请求失败: ${err.message}`);
+      reject(err);
+    });
+
+    req.write(body);
+    req.end();
+  });
+}
+
+// ─── Step 2: 构造 Shopify Webhook Payload ───────────────────
+function buildShopifyPayload(scenario) {
+  const orderId = `FAKEPAY_${Date.now()}_${scenario.label}`;
+  const orderTime = new Date().toISOString(); // "刚刚"下单
+
   return {
-    id: order.orderId,
-    name: order.orderName,
-    order_number: order.orderName.replace('#', ''),
-    email: order.email,
-    phone: order.phone,
-    contact_email: order.email,
-    created_at: order.createdAt,
-    updated_at: order.createdAt,
-    total_price: order.totalPrice,
-    subtotal_price: order.totalPrice,
+    id: orderId,
+    name: scenario.order.orderName,
+    order_number: scenario.order.orderName.replace('#', ''),
+    email: scenario.order.email,
+    phone: scenario.order.phone,
+    contact_email: scenario.order.email,
+    created_at: orderTime,
+    updated_at: orderTime,
+    total_price: scenario.order.totalPrice,
+    subtotal_price: scenario.order.totalPrice,
     total_tax: '0.00',
-    currency: order.currency,
-    financial_status: order.financialStatus,
+    currency: scenario.order.currency,
+    financial_status: scenario.order.financialStatus,
     fulfillment_status: null,
-    landing_site: order.landingSite,
-    referring_site: order.referringSite,
-    browser_ip: order.ip,
+    landing_site: scenario.productPage,
+    referring_site: 'https://www.tiktok.com/',
+    browser_ip: scenario.visitorIp, // 与访客 IP 精确匹配
 
     customer: {
-      id: order.customerId,
-      email: order.email,
-      phone: order.phone,
-      first_name: order.customerName.first,
-      last_name: order.customerName.last,
-      created_at: order.createdAt,
+      id: scenario.order.customerId,
+      email: scenario.order.email,
+      phone: scenario.order.phone,
+      first_name: scenario.order.customerName.first,
+      last_name: scenario.order.customerName.last,
+      created_at: orderTime,
       default_address: {
-        zip: order.shippingZip,
-        city: order.shippingCity,
-        province: order.shippingProvince,
-        country_code: order.shippingCountryCode,
-        address1: order.shippingAddress1,
+        zip: scenario.order.shippingZip,
+        city: scenario.order.shippingCity,
+        province: scenario.order.shippingProvince,
+        country_code: scenario.order.shippingCountryCode,
+        address1: scenario.order.shippingAddress1,
       },
     },
 
     client_details: {
-      browser_ip: order.ip,
-      user_agent: order.userAgent,
-      browser_user_agent: order.userAgent,
+      browser_ip: scenario.visitorIp,
+      user_agent: scenario.visitorUa,
+      browser_user_agent: scenario.visitorUa,
     },
 
     line_items: [
       {
-        id: `li_${order.orderId}_1`,
-        product_id: order.productId,
-        variant_id: order.variantId,
-        title: order.productTitle,
-        name: order.productTitle,
-        sku: order.sku,
-        quantity: order.quantity,
-        price: order.price,
+        id: `li_${orderId}_1`,
+        product_id: scenario.order.productId,
+        variant_id: scenario.order.variantId,
+        title: scenario.order.productTitle,
+        name: scenario.order.productTitle,
+        sku: scenario.order.sku,
+        quantity: scenario.order.quantity,
+        price: scenario.order.price,
         product_type: 'Kitchen',
         vendor: 'ShopYYL',
       },
     ],
 
     shipping_address: {
-      zip: order.shippingZip,
-      city: order.shippingCity,
-      province: order.shippingProvince,
-      country_code: order.shippingCountryCode,
-      address1: order.shippingAddress1,
-      first_name: order.customerName.first,
-      last_name: order.customerName.last,
-      phone: order.phone,
+      zip: scenario.order.shippingZip,
+      city: scenario.order.shippingCity,
+      province: scenario.order.shippingProvince,
+      country_code: scenario.order.shippingCountryCode,
+      address1: scenario.order.shippingAddress1,
+      first_name: scenario.order.customerName.first,
+      last_name: scenario.order.customerName.last,
+      phone: scenario.order.phone,
     },
 
     billing_address: {
-      zip: order.shippingZip,
-      city: order.shippingCity,
-      province: order.shippingProvince,
-      country_code: order.shippingCountryCode,
-      address1: order.shippingAddress1,
-      first_name: order.customerName.first,
-      last_name: order.customerName.last,
-      phone: order.phone,
+      zip: scenario.order.shippingZip,
+      city: scenario.order.shippingCity,
+      province: scenario.order.shippingProvince,
+      country_code: scenario.order.shippingCountryCode,
+      address1: scenario.order.shippingAddress1,
+      first_name: scenario.order.customerName.first,
+      last_name: scenario.order.customerName.last,
+      phone: scenario.order.phone,
     },
   };
 }
 
-// ─── HMAC 签名 ─────────────────────────────────────────
+// ─── Step 3: HMAC 签名 + 发送假单 ──────────────────────────
 function signPayload(rawBody) {
   return crypto
     .createHmac('sha256', WEBHOOK_SECRET)
@@ -216,12 +274,11 @@ function signPayload(rawBody) {
     .digest('base64');
 }
 
-// ─── 发送单个假单 ───────────────────────────────────────
 function sendFakeOrder(payload) {
   return new Promise((resolve, reject) => {
     const rawBody = JSON.stringify(payload);
     const signature = signPayload(Buffer.from(rawBody, 'utf8'));
-    const webhookId = `fake-webhook-${crypto.randomUUID()}`;
+    const webhookId = `fake-pay-${crypto.randomUUID()}`;
 
     const options = {
       hostname: API_HOST,
@@ -235,22 +292,18 @@ function sendFakeOrder(payload) {
         'x-shopify-webhook-id': webhookId,
         'x-shopify-topic': 'orders/paid',
         'x-shopify-shop-domain': 'shop.yyl66666.com',
-        'x-trace-id': `fake-test-${Date.now()}`,
+        'x-trace-id': `fake-pay-${Date.now()}`,
       },
     };
 
     console.log(`\n${'─'.repeat(60)}`);
     console.log(`📦  发送假单: ${payload.name} (ID: ${payload.id})`);
-    console.log(`    订单金额: ${payload.total_price} ${payload.currency}`);
-    console.log(`    创建时间: ${payload.created_at}`);
-    console.log(`    邮箱: ${payload.email}`);
-    console.log(`    电话: ${payload.phone}`);
-    console.log(`    客户ID: ${payload.customer?.id}`);
-    console.log(`    商品: ${payload.line_items?.[0]?.title?.substring(0, 50)}...`);
-    console.log(`    商品ID: ${payload.line_items?.[0]?.product_id}`);
-    console.log(`    IP: ${payload.browser_ip}`);
-    console.log(`    UA: ${(payload.client_details?.user_agent || '').substring(0, 60)}...`);
-    console.log(`    Webhook-ID: ${webhookId}`);
+    console.log(`    💰  金额: ${payload.total_price} ${payload.currency}`);
+    console.log(`    📧  邮箱: ${payload.email}`);
+    console.log(`    📱  电话: ${payload.phone}`);
+    console.log(`    🌐  IP: ${payload.browser_ip}`);
+    console.log(`    🕐  时间: ${payload.created_at}`);
+    console.log(`    🛒  商品: ${payload.line_items?.[0]?.title?.substring(0, 50)}...`);
 
     const req = http.request(options, (res) => {
       let data = '';
@@ -260,9 +313,9 @@ function sendFakeOrder(payload) {
         console.log(`    ${statusEmoji}  响应: HTTP ${res.statusCode}`);
         try {
           const parsed = JSON.parse(data);
-          console.log(`    📋  响应内容: ${JSON.stringify(parsed, null, 2).substring(0, 300)}`);
+          console.log(`    📋  结果: ${JSON.stringify(parsed, null, 2).substring(0, 400)}`);
         } catch (_) {
-          console.log(`    📋  响应内容: ${data.substring(0, 300)}`);
+          console.log(`    📋  结果: ${data.substring(0, 400)}`);
         }
         resolve({ statusCode: res.statusCode, body: data });
       });
@@ -281,64 +334,83 @@ function sendFakeOrder(payload) {
 // ─── 主流程 ─────────────────────────────────────────────
 async function main() {
   console.log('╔══════════════════════════════════════════════════════════╗');
-  console.log('║  🧪  TikTok 归因测试 — 假单发送脚本 v2                   ║');
+  console.log('║  🧪  TikTok Purchase 事件激活 — 假单发送脚本 v3         ║');
   console.log('╚══════════════════════════════════════════════════════════╝');
   console.log('');
-  console.log(`📡  目标端点: http://${API_HOST}:${API_PORT}${WEBHOOK_PATH}`);
-  console.log(`📦  待发送假单数: ${FAKE_ORDERS.length}`);
+  console.log(`📡  目标端点: http://${API_HOST}:${API_PORT}`);
+  console.log(`📦  计划发送: ${SCENARIOS.length} 个假单`);
   console.log('');
-  console.log('🎯  匹配策略:');
-  console.log('    每个假单的 browser_ip 与目标访客 IP 精确匹配');
-  console.log('    目标访客评分: time(30) + product(40) + ip_exact(25) = 95');
-  console.log('    其他访客评分: time(30) + product(40) + ip_mismatch(0) = 70');
-  console.log('    分差 25 ≥ MAIN_MIN_LEAD_GAP(10) → 匹配成功 ✓');
+
+  // ─── Phase 1: 注册假访客 ─────────────────────────
+  console.log('━'.repeat(60));
+  console.log('📋  Phase 1: 注册假访客（携带 TTCLID）');
+  console.log('━'.repeat(60));
+
+  for (const scenario of SCENARIOS) {
+    try {
+      await registerVisitor(scenario);
+    } catch (err) {
+      console.log(`  ❌  访客 ${scenario.label} 注册失败: ${err.message}`);
+    }
+    await delay(500);
+  }
+
+  // 等待入库
+  console.log('\n⏳  等待 2 秒让访客数据入库...\n');
+  await delay(2000);
+
+  // ─── Phase 2: 发送假单 ───────────────────────────
+  console.log('━'.repeat(60));
+  console.log('📋  Phase 2: 发送假单（触发匹配 + TikTok Purchase 回传）');
+  console.log('━'.repeat(60));
   console.log('');
-  console.log('EMQ 字段:');
-  console.log('  • click_id (ttclid)    → 匹配引擎自动从访客获取');
-  console.log('  • ip                   → payload.browser_ip → 明文上报');
-  console.log('  • user_agent           → payload.client_details.user_agent → 明文上报');
-  console.log('  • email                → payload.email → SHA256 哈希后上报');
-  console.log('  • phone_number         → payload.phone → 标准化+SHA256 哈希后上报');
-  console.log('  • external_id          → shopify_customer:{id} → SHA256 哈希后上报');
-  console.log('  • content_id           → line_items[].product_id');
-  console.log('  • value                → total_price');
-  console.log('  • currency             → currency (IDR)');
-  console.log('  • event_id             → order_{shopify_order_id}');
+  console.log('🎯  预期匹配评分:');
+  console.log('    目标访客: time_close(30) + product_strong(40) + ip_exact(25) = 95');
+  console.log('    其他访客: IP 不同 → 最高 70 分');
+  console.log('    分差 25 ≥ MIN_LEAD_GAP(10) → 匹配成功 ✓');
 
   const results = [];
 
-  for (let i = 0; i < FAKE_ORDERS.length; i++) {
-    const payload = buildShopifyPayload(FAKE_ORDERS[i]);
+  for (let i = 0; i < SCENARIOS.length; i++) {
+    const scenario = SCENARIOS[i];
+    const payload = buildShopifyPayload(scenario);
 
     try {
       const result = await sendFakeOrder(payload);
-      results.push({ order: FAKE_ORDERS[i].orderName, ...result });
+      results.push({ order: scenario.order.orderName, ...result });
     } catch (err) {
-      results.push({ order: FAKE_ORDERS[i].orderName, error: err.message });
+      results.push({ order: scenario.order.orderName, error: err.message });
     }
 
-    // 间隔 1.5 秒发送
-    if (i < FAKE_ORDERS.length - 1) {
-      await new Promise((r) => setTimeout(r, 1500));
+    // 间隔 1.5 秒
+    if (i < SCENARIOS.length - 1) {
+      await delay(1500);
     }
   }
 
+  // ─── 汇总 ─────────────────────────────────────────
   console.log(`\n${'═'.repeat(60)}`);
   console.log('📊  发送结果汇总:');
   console.log('─'.repeat(60));
   for (const r of results) {
     const icon = r.statusCode === 200 ? '✅' : r.error ? '💥' : '❌';
-    console.log(`  ${icon}  ${r.order} → ${r.statusCode || r.error}`);
+    let detail = '';
+    if (r.body) {
+      try {
+        const parsed = JSON.parse(r.body);
+        detail = parsed.matched ? ` → 匹配成功 (score=${parsed.score})` : ` → ${parsed.reason || '未匹配'}`;
+      } catch (_) { /* ignore */ }
+    }
+    console.log(`  ${icon}  ${r.order} → HTTP ${r.statusCode || r.error}${detail}`);
   }
   console.log('─'.repeat(60));
   console.log('');
-  console.log('🔍  请前往 TikTok Events Manager 查看是否收到事件');
-  console.log('    并检查 EMQ 评分是否有所提升');
+  console.log('🔍  后续验证:');
+  console.log('    1. TikTok Events Manager → 查看是否收到 Purchase 事件');
+  console.log('    2. 管理后台 → 订单列表: 确认假单状态为 callback_sent');
+  console.log('    3. 管理后台 → 匹配记录: 确认匹配分数 95 (高置信)');
+  console.log('    4. 管理后台 → 回传记录: 确认已成功回传到 TikTok API');
   console.log('');
-  console.log('💡  后续验证:');
-  console.log('    - 管理后台 → 订单列表: 确认假单已入库且 status=callback_sent');
-  console.log('    - 管理后台 → 匹配记录: 确认已与真实访客匹配 (score=95)');
-  console.log('    - 管理后台 → 回传记录: 确认已成功回传到 TikTok API');
 }
 
 main().catch((err) => {

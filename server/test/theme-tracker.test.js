@@ -138,6 +138,47 @@ function createLocalStorage() {
   };
 }
 
+function createFetchSpy() {
+  const calls = [];
+  async function fetchImpl(url, options = {}) {
+    calls.push({
+      url,
+      method: options.method || 'GET',
+      body: options.body ? JSON.parse(options.body) : null,
+    });
+
+    return {
+      ok: true,
+      async json() {
+        return { success: true };
+      },
+    };
+  }
+
+  return {
+    calls,
+    fetchImpl,
+  };
+}
+
+function createTimerController() {
+  const queue = [];
+  return {
+    setTimeout(handler) {
+      queue.push(handler);
+      return queue.length;
+    },
+    clearTimeout() {},
+    async flushAll() {
+      while (queue.length > 0) {
+        const handler = queue.shift();
+        handler();
+        await Promise.resolve();
+      }
+    },
+  };
+}
+
 function createForm(action, fields) {
   const form = new FakeElement('form');
   form.action = action;
@@ -158,7 +199,7 @@ function createLink(href) {
   return link;
 }
 
-function loadThemeTracker(configOverrides = {}) {
+async function loadThemeTracker(configOverrides = {}) {
   const config = {
     apiBaseUrl: '',
     storageDays: 7,
@@ -171,6 +212,8 @@ function loadThemeTracker(configOverrides = {}) {
     ...configOverrides,
   };
   const document = new FakeDocument(config);
+  const fetchSpy = createFetchSpy();
+  const timers = createTimerController();
   const window = {
     localStorage: createLocalStorage(),
     location: {
@@ -185,12 +228,7 @@ function loadThemeTracker(configOverrides = {}) {
     },
     window,
     document,
-    fetch: async () => ({
-      ok: true,
-      async json() {
-        return { success: true };
-      },
-    }),
+    fetch: fetchSpy.fetchImpl,
     URLSearchParams,
     Date,
     JSON,
@@ -203,13 +241,19 @@ function loadThemeTracker(configOverrides = {}) {
     Promise,
     decodeURIComponent,
     encodeURIComponent,
+    setTimeout: timers.setTimeout,
+    clearTimeout: timers.clearTimeout,
   });
 
   const source = fs.readFileSync(TRACKER_PATH, 'utf8');
   vm.runInContext(source, context, { filename: 'cpas-visitor-tracker.js' });
 
+  await Promise.resolve();
+
   return {
     document,
+    fetchCalls: fetchSpy.calls,
+    flushTimers: timers.flushAll,
     window,
   };
 }
@@ -229,8 +273,8 @@ function getQueuedCommands(window, methodName, eventName) {
   });
 }
 
-test('未配置 TikTok 像素码时不会初始化浏览器像素', () => {
-  const { document, window } = loadThemeTracker({
+test('未配置 TikTok 像素码时不会初始化浏览器像素', async () => {
+  const { document, window } = await loadThemeTracker({
     pageType: 'product',
     path: '/products/demo-shelf',
     product: {
@@ -246,8 +290,8 @@ test('未配置 TikTok 像素码时不会初始化浏览器像素', () => {
   assert.equal(document.head.children.length, 0);
 });
 
-test('配置 TikTok 像素码后会初始化 page 与 ViewContent', () => {
-  const { document, window } = loadThemeTracker({
+test('配置 TikTok 像素码后会初始化 page 与 ViewContent', async () => {
+  const { document, window } = await loadThemeTracker({
     pageType: 'product',
     path: '/products/demo-shelf',
     tiktokPixelCode: 'PIXEL_DEMO_001',
@@ -273,8 +317,8 @@ test('配置 TikTok 像素码后会初始化 page 与 ViewContent', () => {
   assert.equal(viewContentCommands[0][2].currency, 'USD');
 });
 
-test('商品页加入购物车表单提交时会发送 AddToCart', () => {
-  const { document, window } = loadThemeTracker({
+test('商品页加入购物车表单提交时会发送 AddToCart', async () => {
+  const { document, window } = await loadThemeTracker({
     pageType: 'product',
     path: '/products/demo-shelf',
     tiktokPixelCode: 'PIXEL_DEMO_002',
@@ -305,8 +349,8 @@ test('商品页加入购物车表单提交时会发送 AddToCart', () => {
   assert.equal(addToCartCommands[0][2].quantity, 2);
 });
 
-test('点击结账入口时只发送一次 InitiateCheckout', () => {
-  const { document, window } = loadThemeTracker({
+test('点击结账入口时只发送一次 InitiateCheckout', async () => {
+  const { document, window } = await loadThemeTracker({
     pageType: 'cart',
     path: '/cart',
     tiktokPixelCode: 'PIXEL_DEMO_003',
@@ -329,4 +373,31 @@ test('点击结账入口时只发送一次 InitiateCheckout', () => {
 
   const initiateCheckoutCommands = getQueuedCommands(window, 'track', 'InitiateCheckout');
   assert.equal(initiateCheckoutCommands.length, 1);
+});
+
+test('访客上报会等待 _ttp 出现后再发送，并把 ttp 带进 payload', async () => {
+  const { document, fetchCalls, flushTimers } = await loadThemeTracker({
+    apiBaseUrl: 'https://sp.yyl66666.com',
+    pageType: 'product',
+    path: '/products/demo-shelf',
+    search: '?ttclid=ttclid_demo_003',
+    tiktokPixelCode: 'PIXEL_DEMO_004',
+    product: {
+      id: 'product_demo_004',
+      variantId: 'variant_demo_004',
+      title: 'Demo shelf',
+      price: 29.9,
+      currency: 'USD',
+    },
+  });
+
+  assert.equal(fetchCalls.length, 0);
+
+  document.cookie = '_ttp=ttp_cookie_demo_004';
+  await flushTimers();
+
+  assert.equal(fetchCalls.length, 1);
+  assert.equal(fetchCalls[0].url, 'https://sp.yyl66666.com/api/visitor');
+  assert.equal(fetchCalls[0].body.ttclid, 'ttclid_demo_003');
+  assert.equal(fetchCalls[0].body.ttp, 'ttp_cookie_demo_004');
 });
