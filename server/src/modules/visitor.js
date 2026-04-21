@@ -2,7 +2,7 @@ const { db } = require('../db/client');
 const { env } = require('../config/env');
 const { getRealIp } = require('../utils/ip');
 const { resolveLimit } = require('../utils/pagination');
-const { classifyVisitorTraffic } = require('../utils/traffic-labels');
+const { classifyVisitorTraffic, isPlaceholderClickId } = require('../utils/traffic-labels');
 const { analyzeUserAgent } = require('../utils/user-agent');
 
 function toIsoString(value, fallback) {
@@ -35,6 +35,24 @@ function handleVisitor(req, res, next) {
       res.status(400).json({
         success: false,
         error: 'ttclid or fbclid is required',
+      });
+      return;
+    }
+
+    if (ttclid && isPlaceholderClickId(ttclid)) {
+      res.status(400).json({
+        success: false,
+        error: 'ttclid placeholder is not allowed',
+        field: 'ttclid',
+      });
+      return;
+    }
+
+    if (fbclid && isPlaceholderClickId(fbclid)) {
+      res.status(400).json({
+        success: false,
+        error: 'fbclid placeholder is not allowed',
+        field: 'fbclid',
       });
       return;
     }

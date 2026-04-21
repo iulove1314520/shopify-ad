@@ -3,7 +3,8 @@ function normalizeClickId(value) {
 }
 
 function isPlaceholderClickId(value) {
-  return normalizeClickId(value).toUpperCase() === '__CLICKID__';
+  const normalized = normalizeClickId(value).toUpperCase();
+  return normalized === '__CLICKID__' || normalized.startsWith('__CLICKID__');
 }
 
 function classifyVisitorTraffic(row = {}) {
