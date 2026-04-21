@@ -15,6 +15,7 @@ const { handleOrdersWebhookRequest } = require('./order/webhook-handler');
 const {
   markWebhookEventFailed,
   saveWebhookEvent,
+  tryStartWebhookProcessing,
 } = require('./order/webhook-events');
 const {
   logInfo,
@@ -30,6 +31,7 @@ const processOrderWebhook = createProcessOrderWebhook({
   logInfo,
   withTraceId,
   resolveWebhookId,
+  tryStartWebhookProcessing,
   saveWebhookEvent,
   upsertOrder,
   updateOrderStatus,

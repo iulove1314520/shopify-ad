@@ -352,6 +352,155 @@ test('sendToTikTok 遇到无法安全规范化的手机号时不会发送 phone_
   }
 });
 
+test('sendToTikTok 在 payload.email 缺失时会回退使用 contact_email 作为 email 匹配键', async () => {
+  const context = createTestContext({
+    TIKTOK_PIXEL_ID: 'CKN3ABRC77U4JN785N60',
+    TIKTOK_ACCESS_TOKEN: 'demo-token',
+    TIKTOK_PAGE_URL_BASE: 'https://shop.example.com',
+  });
+  const originalPost = axios.post;
+  let capturedRequest = null;
+
+  axios.post = async (url, body, config) => {
+    capturedRequest = { url, body, config };
+    return {
+      status: 200,
+      data: {
+        code: 0,
+        message: 'ok',
+      },
+    };
+  };
+
+  try {
+    const { sendToTikTok } = context.requireServer('services/tiktok');
+    const sha256 = (value) =>
+      crypto.createHash('sha256').update(value, 'utf8').digest('hex');
+
+    await sendToTikTok(
+      {
+        shopify_order_id: 'order_tiktok_contact_email_fallback',
+        created_at: '2026-04-02T07:27:50.414Z',
+        total_price: 259170,
+        currency: 'IDR',
+        raw_payload: JSON.stringify({
+          email: '    ',
+          contact_email: '   contact.only@example.com  ',
+          customer: {
+            email: '',
+          },
+          shipping_address: {
+            country_code: 'ID',
+            phone: '******88',
+          },
+        }),
+      },
+      'E.C.P.contact_email_fallback',
+      {
+        visitor: {
+          ip: '198.51.100.24',
+          user_agent: 'Mozilla/5.0 test browser',
+          product_id: '/products/demo-shelf',
+        },
+      }
+    );
+
+    assert.ok(capturedRequest);
+    assert.equal(
+      capturedRequest.body.data[0].context.user.email,
+      sha256('contact.only@example.com')
+    );
+    assert.equal(
+      Object.prototype.hasOwnProperty.call(
+        capturedRequest.body.data[0].context.user,
+        'phone_number'
+      ),
+      false
+    );
+  } finally {
+    axios.post = originalPost;
+    context.cleanup();
+  }
+});
+
+test('sendToTikTok 不会把包含掩码星号的 email 当成有效匹配键', async () => {
+  const context = createTestContext({
+    TIKTOK_PIXEL_ID: 'CKN3ABRC77U4JN785N60',
+    TIKTOK_ACCESS_TOKEN: 'demo-token',
+    TIKTOK_PAGE_URL_BASE: 'https://shop.example.com',
+  });
+  const originalPost = axios.post;
+  let capturedRequest = null;
+
+  axios.post = async (url, body, config) => {
+    capturedRequest = { url, body, config };
+    return {
+      status: 200,
+      data: {
+        code: 0,
+        message: 'ok',
+      },
+    };
+  };
+
+  try {
+    const { sendToTikTok } = context.requireServer('services/tiktok');
+
+    await sendToTikTok(
+      {
+        shopify_order_id: 'order_tiktok_masked_email',
+        created_at: '2026-04-02T07:27:50.414Z',
+        total_price: 259170,
+        currency: 'IDR',
+        raw_payload: JSON.stringify({
+          email: 'abc***@example.com',
+          customer: {
+            id: 887766,
+          },
+          shipping_address: {
+            country_code: 'ID',
+            phone: '******88',
+          },
+        }),
+      },
+      'E.C.P.masked_email',
+      {
+        visitor: {
+          ip: '198.51.100.24',
+          user_agent: 'Mozilla/5.0 test browser',
+          product_id: '/products/demo-shelf',
+        },
+      }
+    );
+
+    assert.ok(capturedRequest);
+    assert.equal(
+      Object.prototype.hasOwnProperty.call(
+        capturedRequest.body.data[0].context.user,
+        'email'
+      ),
+      false
+    );
+    assert.equal(
+      Object.prototype.hasOwnProperty.call(
+        capturedRequest.body.data[0].context.user,
+        'phone_number'
+      ),
+      false
+    );
+    assert.equal(
+      Object.prototype.hasOwnProperty.call(
+        capturedRequest.body.data[0].context.user,
+        'external_id'
+      ),
+      true
+    );
+  } finally {
+    axios.post = originalPost;
+    context.cleanup();
+  }
+});
+
 test('sendToTikTok 在 disabled 模式下会跳过 Purchase 回传并写入本地来源标签', async () => {
   const context = createTestContext({
     TIKTOK_PIXEL_ID: 'CKN3ABRC77U4JN785N60',

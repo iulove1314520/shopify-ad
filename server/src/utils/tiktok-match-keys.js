@@ -14,7 +14,17 @@ function hashSha256(value) {
 }
 
 function normalizeEmail(value) {
-  return normalizeText(value).toLowerCase();
+  const normalized = normalizeText(value).toLowerCase();
+  if (!normalized || normalized.includes('*')) {
+    return '';
+  }
+
+  // Keep validation permissive while filtering obvious non-email values.
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalized)) {
+    return '';
+  }
+
+  return normalized;
 }
 
 function mapCountryDialCode(countryCode) {
@@ -31,7 +41,7 @@ function mapCountryDialCode(countryCode) {
 
 function normalizePhone(value, countryCode = '') {
   const raw = normalizeText(value);
-  if (!raw) {
+  if (!raw || raw.includes('*')) {
     return '';
   }
 
@@ -77,7 +87,27 @@ function pickFirstText(...values) {
   return '';
 }
 
+function pickNormalizedEmail(payload = {}, customer = {}, shippingAddress = {}, billingAddress = {}) {
+  return normalizeEmail(
+    pickFirstText(
+      payload.email,
+      payload.contact_email,
+      customer.email,
+      shippingAddress.email,
+      billingAddress.email
+    )
+  );
+}
+
 function buildExternalId(payload = {}) {
+  const shippingAddress =
+    payload?.shipping_address && typeof payload.shipping_address === 'object'
+      ? payload.shipping_address
+      : {};
+  const billingAddress =
+    payload?.billing_address && typeof payload.billing_address === 'object'
+      ? payload.billing_address
+      : {};
   const customer =
     payload?.customer && typeof payload.customer === 'object'
       ? payload.customer
@@ -88,7 +118,12 @@ function buildExternalId(payload = {}) {
     return `shopify_customer:${customerId}`;
   }
 
-  const customerEmail = normalizeEmail(customer.email || payload.email);
+  const customerEmail = pickNormalizedEmail(
+    payload,
+    customer,
+    shippingAddress,
+    billingAddress
+  );
   if (customerEmail) {
     return `shopify_email:${customerEmail}`;
   }
@@ -121,9 +156,7 @@ function buildHashedMatchKeys(payload = {}, visitor = null) {
       ? payload.customer
       : {};
 
-  const email = normalizeEmail(
-    pickFirstText(payload.email, customer.email, payload.contact_email)
-  );
+  const email = pickNormalizedEmail(payload, customer, shippingAddress, billingAddress);
   const phone = normalizePhone(
     pickFirstText(
       payload.phone,

@@ -4,6 +4,7 @@ function createProcessOrderWebhook({
   logInfo,
   withTraceId,
   resolveWebhookId,
+  tryStartWebhookProcessing,
   saveWebhookEvent,
   upsertOrder,
   updateOrderStatus,
@@ -31,29 +32,29 @@ function createProcessOrderWebhook({
       throw new Error('Missing Shopify order id');
     }
 
-    const existingEvent = db
-      .prepare('SELECT status FROM webhook_events WHERE webhook_id = ?')
-      .get(webhookId);
+    const processingState = tryStartWebhookProcessing(db, {
+      webhookId,
+      topic,
+      shopifyOrderId,
+      traceId,
+    });
 
-    if (existingEvent?.status === 'processed') {
+    if (!processingState.shouldProcess) {
       logInfo(
         'webhook.duplicate_ignored',
         withTraceId(traceId, {
           webhookId,
           shopifyOrderId,
-          reason: 'webhook_already_processed',
+          reason: processingState.duplicateReason || 'webhook_locked',
+          status: processingState.status || '',
         })
       );
-      return { duplicate: true, reason: 'webhook_already_processed', traceId };
+      return {
+        duplicate: true,
+        reason: processingState.duplicateReason || 'webhook_locked',
+        traceId,
+      };
     }
-
-    saveWebhookEvent(db, {
-      webhookId,
-      topic,
-      shopifyOrderId,
-      traceId,
-      status: 'received',
-    });
 
     const orderRecord = upsertOrder(db, order, rawBody, traceId);
     logInfo(
