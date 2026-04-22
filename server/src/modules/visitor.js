@@ -5,6 +5,13 @@ const { resolveLimit } = require('../utils/pagination');
 const { classifyVisitorTraffic, isPlaceholderClickId } = require('../utils/traffic-labels');
 const { analyzeUserAgent } = require('../utils/user-agent');
 
+const MAX_CLICK_ID_LENGTH = 512;
+const MAX_TTP_LENGTH = 256;
+const MAX_PRODUCT_ID_LENGTH = 1024;
+const MAX_USER_AGENT_LENGTH = 1024;
+const MAX_TIMESTAMP_FUTURE_DRIFT_MS = 10 * 60 * 1000;
+const MAX_TIMESTAMP_PAST_DRIFT_MS = 30 * 24 * 60 * 60 * 1000;
+
 function toIsoString(value, fallback) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) {
@@ -12,6 +19,78 @@ function toIsoString(value, fallback) {
   }
 
   return date.toISOString();
+}
+
+function validateVisitorPayload({
+  ttclid,
+  fbclid,
+  ttp,
+  productId,
+  userAgent,
+  timestamp,
+  now = Date.now(),
+}) {
+  if (ttclid.length > MAX_CLICK_ID_LENGTH) {
+    return {
+      field: 'ttclid',
+      error: `ttclid is too long (max ${MAX_CLICK_ID_LENGTH} chars)`,
+    };
+  }
+
+  if (fbclid.length > MAX_CLICK_ID_LENGTH) {
+    return {
+      field: 'fbclid',
+      error: `fbclid is too long (max ${MAX_CLICK_ID_LENGTH} chars)`,
+    };
+  }
+
+  if (ttp.length > MAX_TTP_LENGTH) {
+    return {
+      field: 'ttp',
+      error: `ttp is too long (max ${MAX_TTP_LENGTH} chars)`,
+    };
+  }
+
+  if (productId.length > MAX_PRODUCT_ID_LENGTH) {
+    return {
+      field: 'product_id',
+      error: `product_id is too long (max ${MAX_PRODUCT_ID_LENGTH} chars)`,
+    };
+  }
+
+  if (userAgent.length > MAX_USER_AGENT_LENGTH) {
+    return {
+      field: 'user_agent',
+      error: `user_agent is too long (max ${MAX_USER_AGENT_LENGTH} chars)`,
+    };
+  }
+
+  const rawTimestamp = String(timestamp || '').trim();
+  if (rawTimestamp) {
+    const parsedMs = new Date(rawTimestamp).getTime();
+    if (!Number.isFinite(parsedMs)) {
+      return {
+        field: 'timestamp',
+        error: 'timestamp is invalid',
+      };
+    }
+
+    if (parsedMs > now + MAX_TIMESTAMP_FUTURE_DRIFT_MS) {
+      return {
+        field: 'timestamp',
+        error: 'timestamp is too far in the future',
+      };
+    }
+
+    if (parsedMs < now - MAX_TIMESTAMP_PAST_DRIFT_MS) {
+      return {
+        field: 'timestamp',
+        error: 'timestamp is too old',
+      };
+    }
+  }
+
+  return null;
 }
 
 function pruneVisitors() {
@@ -27,9 +106,28 @@ function handleVisitor(req, res, next) {
     const ttclid = String(req.body?.ttclid || '').trim();
     const fbclid = String(req.body?.fbclid || '').trim();
     const ttp = String(req.body?.ttp || '').trim();
+    const productId = String(req.body?.product_id || '').trim();
     const userAgent = String(
       req.body?.user_agent || req.get('user-agent') || ''
     ).trim();
+    const rawTimestamp = req.body?.timestamp;
+
+    const validationIssue = validateVisitorPayload({
+      ttclid,
+      fbclid,
+      ttp,
+      productId,
+      userAgent,
+      timestamp: rawTimestamp,
+    });
+    if (validationIssue) {
+      res.status(400).json({
+        success: false,
+        error: validationIssue.error,
+        field: validationIssue.field,
+      });
+      return;
+    }
 
     if (!ttclid && !fbclid) {
       res.status(400).json({
@@ -62,7 +160,7 @@ function handleVisitor(req, res, next) {
       return;
     }
 
-    const timestamp = toIsoString(req.body?.timestamp, new Date().toISOString());
+    const timestamp = toIsoString(rawTimestamp, new Date().toISOString());
 
     db.prepare(
       `
@@ -82,7 +180,7 @@ function handleVisitor(req, res, next) {
       ttp,
       getRealIp(req),
       timestamp,
-      String(req.body?.product_id || '').trim(),
+      productId,
       userAgent
     );
 
@@ -144,4 +242,5 @@ module.exports = {
   handleVisitor,
   listVisitors,
   pruneVisitors,
+  validateVisitorPayload,
 };

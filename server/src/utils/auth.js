@@ -28,7 +28,7 @@ function safeEqual(expected, provided) {
 
 function requireApiAuth(req, res, next) {
   if (!env.apiAuthToken) {
-    next();
+    res.status(503).json({ error: 'API auth token is not configured' });
     return;
   }
 
@@ -56,6 +56,11 @@ function handleLogin(req, res) {
     return;
   }
 
+  if (!env.apiAuthToken) {
+    res.status(503).json({ error: 'API 令牌未配置，请联系管理员' });
+    return;
+  }
+
   const usernameMatch = safeEqual(env.adminUsername, username);
   const passwordMatch = safeEqual(env.adminPassword, password);
 
@@ -68,4 +73,3 @@ function handleLogin(req, res) {
 }
 
 module.exports = { requireApiAuth, handleLogin };
-

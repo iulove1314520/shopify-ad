@@ -90,3 +90,6 @@ CREATE TABLE IF NOT EXISTS callbacks (
 
 CREATE INDEX IF NOT EXISTS idx_callbacks_order_id ON callbacks(order_id);
 CREATE INDEX IF NOT EXISTS idx_callbacks_status ON callbacks(status);
+CREATE INDEX IF NOT EXISTS idx_callbacks_rate_limit ON callbacks(platform, callback_time);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_callbacks_attempt_unique
+  ON callbacks(order_id, platform, attempt_number);

@@ -9,6 +9,7 @@ const VALID_TABLE_NAMES = new Set([
   'matches',
   'callbacks',
   'webhook_events',
+  'rate_limits',
 ]);
 
 function hasColumnInDb(dbClient, tableName, columnName) {
@@ -182,6 +183,27 @@ function initDatabase(dbClient = db) {
     'matches',
     'decision_summary',
     "TEXT NOT NULL DEFAULT ''"
+  );
+  dbClient.exec(
+    'CREATE INDEX IF NOT EXISTS idx_callbacks_rate_limit ON callbacks(platform, callback_time)'
+  );
+  dbClient.exec(
+    'CREATE UNIQUE INDEX IF NOT EXISTS idx_callbacks_attempt_unique ON callbacks(order_id, platform, attempt_number)'
+  );
+  dbClient.exec(`
+    CREATE TABLE IF NOT EXISTS rate_limits (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      limiter_name TEXT NOT NULL,
+      key TEXT NOT NULL,
+      count INTEGER NOT NULL DEFAULT 0,
+      reset_at INTEGER NOT NULL,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(limiter_name, key)
+    )
+  `);
+  dbClient.exec(
+    'CREATE INDEX IF NOT EXISTS idx_rate_limits_reset_at ON rate_limits(reset_at)'
   );
 
   try {

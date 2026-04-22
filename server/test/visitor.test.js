@@ -475,6 +475,144 @@ test('handleVisitor 拒收 fbclid 为 __CLICKID__ 的请求', () => {
   }
 });
 
+test('handleVisitor 拒收超长 ttclid', () => {
+  const context = createTestContext();
+
+  try {
+    const { handleVisitor } = context.requireServer('modules/visitor');
+    const response = createMockResponse();
+
+    handleVisitor(
+      {
+        body: {
+          ttclid: 't'.repeat(513),
+          product_id: '/products/demo',
+          timestamp: '2026-03-28T01:00:00.000Z',
+        },
+        headers: {},
+        socket: { remoteAddress: '203.0.113.9' },
+        get() {
+          return 'unit-test-agent';
+        },
+      },
+      response,
+      (error) => {
+        throw error;
+      }
+    );
+
+    assert.equal(response.statusCode, 400);
+    assert.equal(response.payload.field, 'ttclid');
+    assert.match(response.payload.error, /too long/i);
+  } finally {
+    context.cleanup();
+  }
+});
+
+test('handleVisitor 拒收过旧 timestamp', () => {
+  const context = createTestContext();
+
+  try {
+    const { handleVisitor } = context.requireServer('modules/visitor');
+    const response = createMockResponse();
+    const tooOld = new Date(Date.now() - 31 * 24 * 60 * 60 * 1000).toISOString();
+
+    handleVisitor(
+      {
+        body: {
+          ttclid: 'ttclid_old_ts_demo',
+          product_id: '/products/demo',
+          timestamp: tooOld,
+        },
+        headers: {},
+        socket: { remoteAddress: '203.0.113.9' },
+        get() {
+          return 'unit-test-agent';
+        },
+      },
+      response,
+      (error) => {
+        throw error;
+      }
+    );
+
+    assert.equal(response.statusCode, 400);
+    assert.equal(response.payload.field, 'timestamp');
+    assert.match(response.payload.error, /too old/i);
+  } finally {
+    context.cleanup();
+  }
+});
+
+test('handleVisitor 拒收过远未来 timestamp', () => {
+  const context = createTestContext();
+
+  try {
+    const { handleVisitor } = context.requireServer('modules/visitor');
+    const response = createMockResponse();
+    const tooFuture = new Date(Date.now() + 11 * 60 * 1000).toISOString();
+
+    handleVisitor(
+      {
+        body: {
+          ttclid: 'ttclid_future_ts_demo',
+          product_id: '/products/demo',
+          timestamp: tooFuture,
+        },
+        headers: {},
+        socket: { remoteAddress: '203.0.113.9' },
+        get() {
+          return 'unit-test-agent';
+        },
+      },
+      response,
+      (error) => {
+        throw error;
+      }
+    );
+
+    assert.equal(response.statusCode, 400);
+    assert.equal(response.payload.field, 'timestamp');
+    assert.match(response.payload.error, /future/i);
+  } finally {
+    context.cleanup();
+  }
+});
+
+test('handleVisitor 拒收非法 timestamp 字符串', () => {
+  const context = createTestContext();
+
+  try {
+    const { handleVisitor } = context.requireServer('modules/visitor');
+    const response = createMockResponse();
+
+    handleVisitor(
+      {
+        body: {
+          ttclid: 'ttclid_bad_ts_demo',
+          product_id: '/products/demo',
+          timestamp: 'not-a-date',
+        },
+        headers: {},
+        socket: { remoteAddress: '203.0.113.9' },
+        get() {
+          return 'unit-test-agent';
+        },
+      },
+      response,
+      (error) => {
+        throw error;
+      }
+    );
+
+    assert.equal(response.statusCode, 400);
+    assert.equal(response.payload.field, 'timestamp');
+    assert.match(response.payload.error, /invalid/i);
+  } finally {
+    context.cleanup();
+  }
+});
+
 test('classifyVisitorTraffic 仍能把历史 __CLICKID__ 数据标记为测试流量', () => {
   const context = createTestContext();
 

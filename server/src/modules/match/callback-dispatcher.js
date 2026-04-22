@@ -21,52 +21,67 @@ function resolveSender(
 }
 
 function getNextAttemptNumber(dbClient, orderId, platform) {
-  const row = dbClient
-    .prepare(
-      `
-        SELECT COALESCE(MAX(attempt_number), 0) AS max_attempt
-        FROM callbacks
-        WHERE order_id = ? AND platform = ?
-      `
-    )
-    .get(orderId, platform);
+  return dbClient
+    .transaction((currentOrderId, currentPlatform) => {
+      const row = dbClient
+        .prepare(
+          `
+            SELECT COALESCE(MAX(attempt_number), 0) AS max_attempt
+            FROM callbacks
+            WHERE order_id = ? AND platform = ?
+          `
+        )
+        .get(currentOrderId, currentPlatform);
 
-  return Number(row?.max_attempt || 0) + 1;
+      return Number(row?.max_attempt || 0) + 1;
+    })(orderId, platform);
 }
 
 function saveCallback(dbClient, order, callbackResult, triggerSource, traceId = '') {
-  dbClient.prepare(
-    `
-      INSERT INTO callbacks (
-        order_id,
-        shopify_order_id,
-        platform,
-        trigger_source,
-        trace_id,
-        attempt_number,
-        status,
-        retryable,
-        http_status,
-        request_summary,
-        response_summary,
-        error_message,
-        callback_time
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `
-  ).run(
-    order.id,
-    order.shopify_order_id,
-    callbackResult.platform,
-    triggerSource,
-    traceId,
-    callbackResult.attemptNumber,
-    callbackResult.status,
-    callbackResult.retryable ? 1 : 0,
-    callbackResult.httpStatus,
-    callbackResult.requestSummary || '',
-    callbackResult.responseSummary || '',
-    callbackResult.errorMessage || '',
-    new Date().toISOString()
+  dbClient
+    .prepare(
+      `
+        INSERT INTO callbacks (
+          order_id,
+          shopify_order_id,
+          platform,
+          trigger_source,
+          trace_id,
+          attempt_number,
+          status,
+          retryable,
+          http_status,
+          request_summary,
+          response_summary,
+          error_message,
+          callback_time
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `
+    )
+    .run(
+      order.id,
+      order.shopify_order_id,
+      callbackResult.platform,
+      triggerSource,
+      traceId,
+      callbackResult.attemptNumber,
+      callbackResult.status,
+      callbackResult.retryable ? 1 : 0,
+      callbackResult.httpStatus,
+      callbackResult.requestSummary || '',
+      callbackResult.responseSummary || '',
+      callbackResult.errorMessage || '',
+      new Date().toISOString()
+    );
+}
+
+function isSqliteUniqueConstraintError(error) {
+  const message = String(error?.message || '');
+  return (
+    message.includes('UNIQUE constraint failed') &&
+    message.includes('callbacks.order_id') &&
+    message.includes('callbacks.platform') &&
+    message.includes('callbacks.attempt_number')
   );
 }
 
@@ -111,12 +126,29 @@ async function dispatchCallback({
 
   for (let index = 0; index < maxAttempts; index += 1) {
     const rawResult = await sender(order, clickId, callbackContext);
-    const callbackResult = {
-      ...rawResult,
-      attemptNumber: nextAttemptNumber(order.id, platform),
-    };
+    let callbackResult = null;
 
-    persistCallback(order, callbackResult, triggerSource, traceId);
+    // Concurrent retries for the same order/platform can race.
+    // Retry local attempt allocation when unique attempt_number conflicts happen.
+    for (let persistRetry = 0; persistRetry < 3; persistRetry += 1) {
+      callbackResult = {
+        ...rawResult,
+        attemptNumber: nextAttemptNumber(order.id, platform),
+      };
+
+      try {
+        persistCallback(order, callbackResult, triggerSource, traceId);
+        break;
+      } catch (error) {
+        if (!isSqliteUniqueConstraintError(error) || persistRetry === 2) {
+          throw error;
+        }
+      }
+    }
+
+    if (!callbackResult) {
+      throw new Error('failed to persist callback result');
+    }
     finalResult = callbackResult;
 
     const logDetails = withTraceIdFn(traceId, {
