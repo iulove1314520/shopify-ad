@@ -150,17 +150,18 @@ function buildPageContext(payload, visitor, runtimeEnv = env) {
   return page;
 }
 
-function buildContext(payload, visitor, ttclid, runtimeEnv = env) {
+function buildUser(payload, visitor, ttclid) {
   const clientDetails =
     payload?.client_details && typeof payload.client_details === 'object'
       ? payload.client_details
       : {};
 
-  const context = {
-    ad: {
-      callback: ttclid,
-    },
-  };
+  const user = {};
+
+  const trimmedTtclid = String(ttclid || '').trim();
+  if (trimmedTtclid) {
+    user.ttclid = trimmedTtclid;
+  }
 
   const ip = pickFirstText(
     visitor?.ip,
@@ -169,7 +170,7 @@ function buildContext(payload, visitor, ttclid, runtimeEnv = env) {
     clientDetails?.ip
   );
   if (ip) {
-    context.ip = ip;
+    user.ip = ip;
   }
 
   const userAgent = pickBestUserAgent([
@@ -186,20 +187,13 @@ function buildContext(payload, visitor, ttclid, runtimeEnv = env) {
     { value: payload?.user_agent, source: 'payload_user_agent' },
   ]).value;
   if (userAgent) {
-    context.user_agent = userAgent;
+    user.user_agent = userAgent;
   }
 
-  const page = buildPageContext(payload, visitor, runtimeEnv);
-  if (page) {
-    context.page = page;
-  }
+  const matchKeys = buildHashedMatchKeys(payload, visitor);
+  Object.assign(user, matchKeys);
 
-  const user = buildHashedMatchKeys(payload, visitor);
-  if (Object.keys(user).length > 0) {
-    context.user = user;
-  }
-
-  return context;
+  return user;
 }
 
 function buildTikTokRequestBody(order, ttclid, callbackContext = {}, runtimeEnv = env) {
@@ -209,7 +203,9 @@ function buildTikTokRequestBody(order, ttclid, callbackContext = {}, runtimeEnv 
     const parsed = new Date(order?.created_at).getTime();
     return Number.isFinite(parsed) ? parsed : Date.now();
   })();
-  const context = buildContext(payload, visitor, ttclid, runtimeEnv);
+  const eventTime = Math.floor(eventTimestampMs / 1000);
+  const user = buildUser(payload, visitor, ttclid);
+  const page = buildPageContext(payload, visitor, runtimeEnv);
   const contents = buildContents(payload, visitor);
   const properties = {
     currency: order.currency,
@@ -221,20 +217,25 @@ function buildTikTokRequestBody(order, ttclid, callbackContext = {}, runtimeEnv 
     properties.content_type = 'product';
   }
 
+  const dataItem = {
+    event: 'Purchase',
+    event_id: `order_${order.shopify_order_id}`,
+    event_time: eventTime,
+    properties,
+  };
+
+  if (Object.keys(user).length > 0) {
+    dataItem.user = user;
+  }
+
+  if (page) {
+    dataItem.page = page;
+  }
+
   return {
     event_source: 'web',
     event_source_id: runtimeEnv.tiktokPixelId,
-    pixel_code: runtimeEnv.tiktokPixelId,
-    data: [
-      {
-        event: 'Purchase',
-        event_id: `order_${order.shopify_order_id}`,
-        timestamp: eventTimestampMs,
-        event_time: Math.floor(eventTimestampMs / 1000),
-        properties,
-        context,
-      },
-    ],
+    data: [dataItem],
   };
 }
 

@@ -176,7 +176,7 @@ function buildHashedMatchKeys(payload = {}, visitor = null) {
   }
 
   if (phone) {
-    user.phone_number = hashSha256(phone);
+    user.phone = hashSha256(phone);
   }
 
   if (externalId) {

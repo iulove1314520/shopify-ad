@@ -45,13 +45,17 @@ test('buildTikTokRequestBody 会构建稳定的 Purchase request body', () => {
     );
 
     assert.equal(body.event_source, 'web');
-    assert.equal(body.pixel_code, 'CKN3ABRC77U4JN785N60');
+    assert.equal(body.event_source_id, 'CKN3ABRC77U4JN785N60');
+    assert.equal(body.pixel_code, undefined);
     assert.equal(body.data[0].event, 'Purchase');
     assert.equal(body.data[0].event_id, 'order_order_tiktok_builder_001');
-    assert.equal(body.data[0].context.ip, '198.51.100.24');
-    assert.equal(body.data[0].context.user_agent, 'Mozilla/5.0 test browser');
+    assert.equal(body.data[0].timestamp, undefined);
+    assert.equal(body.data[0].context, undefined);
+    assert.equal(body.data[0].user.ttclid, 'ttclid-builder-001');
+    assert.equal(body.data[0].user.ip, '198.51.100.24');
+    assert.equal(body.data[0].user.user_agent, 'Mozilla/5.0 test browser');
     assert.equal(
-      body.data[0].context.page.url,
+      body.data[0].page.url,
       'https://shop.example.com/products/demo-shelf'
     );
     assert.equal(body.data[0].properties.contents[0].content_id, 'shelf-001');
@@ -116,25 +120,26 @@ test('sendToTikTok 会补齐 event_source、event_id、ip、user_agent 和 page 
       capturedRequest.url,
       'https://business-api.tiktok.com/open_api/v1.3/event/track/'
     );
-    assert.equal(capturedRequest.body.pixel_code, 'CKN3ABRC77U4JN785N60');
+    assert.equal(capturedRequest.body.pixel_code, undefined);
     assert.equal(capturedRequest.body.event_source, 'web');
     assert.equal(capturedRequest.body.event_source_id, 'CKN3ABRC77U4JN785N60');
     assert.equal(capturedRequest.body.data.length, 1);
     assert.equal(capturedRequest.body.data[0].event, 'Purchase');
     assert.equal(capturedRequest.body.data[0].event_id, 'order_order_tiktok_001');
-    assert.equal(capturedRequest.body.data[0].timestamp, 1775114870414);
+    assert.equal(capturedRequest.body.data[0].timestamp, undefined);
     assert.equal(capturedRequest.body.data[0].event_time, 1775114870);
-    assert.equal(capturedRequest.body.data[0].context.ip, '198.51.100.24');
+    assert.equal(capturedRequest.body.data[0].context, undefined);
+    assert.equal(capturedRequest.body.data[0].user.ip, '198.51.100.24');
     assert.equal(
-      capturedRequest.body.data[0].context.user_agent,
+      capturedRequest.body.data[0].user.user_agent,
       'Mozilla/5.0 test browser'
     );
     assert.equal(
-      capturedRequest.body.data[0].context.page.url,
+      capturedRequest.body.data[0].page.url,
       'https://shop.example.com/products/demo-shelf'
     );
     assert.equal(
-      capturedRequest.body.data[0].context.ad.callback,
+      capturedRequest.body.data[0].user.ttclid,
       'E.C.P.v3fQ2RHacdksKfofPmlyuStIIHJ4Af1tKYxF9zz2c2PLx1Oaw15oHpcfl5AH'
     );
     assert.equal(capturedRequest.body.data[0].properties.currency, 'IDR');
@@ -207,7 +212,7 @@ test('sendToTikTok 会优先选择信息更完整的 User-Agent 作为回传上�
 
     assert.ok(capturedRequest);
     assert.equal(
-      capturedRequest.body.data[0].context.user_agent,
+      capturedRequest.body.data[0].user.user_agent,
       'Mozilla/5.0 (Linux; Android 14; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36'
     );
   } finally {
@@ -276,13 +281,13 @@ test('sendToTikTok 会在可用时补充哈希后的 email、phone、external_id
       }
     );
 
-    const user = capturedRequest.body.data[0].context.user;
+    const user = capturedRequest.body.data[0].user;
     const sha256 = (value) =>
       crypto.createHash('sha256').update(value, 'utf8').digest('hex');
 
     assert.ok(capturedRequest);
     assert.equal(user.email, sha256('fadlikamalhuda.shopee@example.com'));
-    assert.equal(user.phone_number, sha256('+6281234567890'));
+    assert.equal(user.phone, sha256('+6281234567890'));
     assert.equal(user.external_id, sha256('shopify_customer:998877'));
     assert.equal(user.ttp, 'ttp_cookie_demo_003');
   } finally {
@@ -291,7 +296,7 @@ test('sendToTikTok 会在可用时补充哈希后的 email、phone、external_id
   }
 });
 
-test('sendToTikTok 遇到无法安全规范化的手机号时不会发送 phone_number', async () => {
+test('sendToTikTok 遇到无法安全规范化的手机号时不会发送 phone', async () => {
   const context = createTestContext({
     TIKTOK_PIXEL_ID: 'CKN3ABRC77U4JN785N60',
     TIKTOK_ACCESS_TOKEN: 'demo-token',
@@ -341,8 +346,8 @@ test('sendToTikTok 遇到无法安全规范化的手机号时不会发送 phone_
     assert.ok(capturedRequest);
     assert.equal(
       Object.prototype.hasOwnProperty.call(
-        capturedRequest.body.data[0].context.user,
-        'phone_number'
+        capturedRequest.body.data[0].user,
+        'phone'
       ),
       false
     );
@@ -407,13 +412,13 @@ test('sendToTikTok 在 payload.email 缺失时会回退使用 contact_email 作�
 
     assert.ok(capturedRequest);
     assert.equal(
-      capturedRequest.body.data[0].context.user.email,
+      capturedRequest.body.data[0].user.email,
       sha256('contact.only@example.com')
     );
     assert.equal(
       Object.prototype.hasOwnProperty.call(
-        capturedRequest.body.data[0].context.user,
-        'phone_number'
+        capturedRequest.body.data[0].user,
+        'phone'
       ),
       false
     );
@@ -476,21 +481,21 @@ test('sendToTikTok 不会把包含掩码星号的 email 当成有效匹配键', 
     assert.ok(capturedRequest);
     assert.equal(
       Object.prototype.hasOwnProperty.call(
-        capturedRequest.body.data[0].context.user,
+        capturedRequest.body.data[0].user,
         'email'
       ),
       false
     );
     assert.equal(
       Object.prototype.hasOwnProperty.call(
-        capturedRequest.body.data[0].context.user,
-        'phone_number'
+        capturedRequest.body.data[0].user,
+        'phone'
       ),
       false
     );
     assert.equal(
       Object.prototype.hasOwnProperty.call(
-        capturedRequest.body.data[0].context.user,
+        capturedRequest.body.data[0].user,
         'external_id'
       ),
       true
